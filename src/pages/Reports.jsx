@@ -80,8 +80,10 @@ export default function Reports() {
     totals[cat] = monthly.reduce((s, m) => s + (m[cat] || 0), 0)
   })
 
-  // Only show categories that have any spend
-  const activeCategories = EXPENSE_CATEGORIES.filter(cat => totals[cat] > 0)
+  // Show categories that have any expense entry for the year (direct check on raw data)
+  const activeCategories = EXPENSE_CATEGORIES.filter(cat =>
+    expenses.some(e => e.category === cat)
+  )
 
   // ── Chart data ─────────────────────────────────────────────────────────────
   const barData = monthly.map(m => ({
