@@ -115,7 +115,7 @@ export default function CalendarView() {
             </div>
 
             {/* Day cells */}
-            <div className="grid grid-cols-7 gap-1">
+            <div className="grid grid-cols-7 gap-0.5">
               {cells.map((day, i) => {
                 if (!day) return <div key={`e-${i}`} />
                 const res = getReservation(day)
@@ -124,8 +124,8 @@ export default function CalendarView() {
                     key={day}
                     title={res ? `${res.source} · ${res.reservation_id || ''}` : 'Free'}
                     className={`
-                      relative aspect-square flex flex-col items-center justify-center
-                      rounded-lg text-sm font-medium select-none
+                      relative flex flex-col items-center justify-center
+                      rounded-md font-medium select-none h-8 sm:h-10
                       ${res
                         ? 'bg-red-100 text-red-700 hover:bg-red-200'
                         : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
@@ -133,9 +133,9 @@ export default function CalendarView() {
                       ${isToday(day) ? 'ring-2 ring-indigo-500 ring-offset-1' : ''}
                     `}
                   >
-                    <span className="text-xs sm:text-sm">{day}</span>
+                    <span className="text-[11px] sm:text-xs font-semibold">{day}</span>
                     {res && (
-                      <span className="hidden sm:block text-[9px] leading-none mt-0.5 opacity-60 truncate w-full text-center px-1">
+                      <span className="hidden sm:block text-[8px] leading-none mt-0.5 opacity-60 truncate w-full text-center px-0.5">
                         {res.source}
                       </span>
                     )}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import Modal from '../components/Modal'
 import {
@@ -10,6 +10,7 @@ import {
 const EMPTY = {
   source: 'Booking',
   reservation_id: '',
+  guest_name: '',
   check_in: '',
   check_out: '',
   guests: 1,
@@ -30,6 +31,10 @@ export default function Reservations() {
     year: new Date().getFullYear(),
     month: '',
     source: '',
+    dateFrom: '',
+    dateTo: '',
+    guestName: '',
+    bookingId: '',
   })
 
   useEffect(() => { fetchData() }, [filters.year])
@@ -50,8 +55,24 @@ export default function Reservations() {
   const filtered = reservations.filter(r => {
     if (filters.month && new Date(r.check_in).getMonth() + 1 !== +filters.month) return false
     if (filters.source && r.source !== filters.source) return false
+    if (filters.dateFrom && r.check_in < filters.dateFrom) return false
+    if (filters.dateTo && r.check_in > filters.dateTo) return false
+    if (filters.guestName) {
+      const q = filters.guestName.toLowerCase()
+      if (!(r.guest_name || '').toLowerCase().includes(q)) return false
+    }
+    if (filters.bookingId) {
+      const q = filters.bookingId.toLowerCase()
+      if (!(r.reservation_id || '').toLowerCase().includes(q)) return false
+    }
     return true
   })
+
+  const hasActiveSearch = filters.guestName || filters.bookingId || filters.dateFrom || filters.dateTo
+
+  function clearSearch() {
+    setFilters(f => ({ ...f, guestName: '', bookingId: '', dateFrom: '', dateTo: '' }))
+  }
 
   function openAdd() {
     setEditing(null)
@@ -64,6 +85,7 @@ export default function Reservations() {
     setForm({
       source: r.source,
       reservation_id: r.reservation_id || '',
+      guest_name: r.guest_name || '',
       check_in: r.check_in,
       check_out: r.check_out,
       guests: r.guests || 1,
@@ -81,6 +103,7 @@ export default function Reservations() {
     const payload = {
       source: form.source,
       reservation_id: form.reservation_id || null,
+      guest_name: form.guest_name || null,
       check_in: form.check_in,
       check_out: form.check_out,
       guests: +form.guests || 1,
@@ -107,7 +130,6 @@ export default function Reservations() {
     fetchData()
   }
 
-  // Summary totals for filtered view
   const totalPayout = filtered.reduce((s, r) => s + +r.total_payout, 0)
   const totalCommission = filtered.reduce((s, r) => s + +(r.commission || 0), 0)
   const totalDiscount = filtered.reduce((s, r) => s + +(r.discount || 0), 0)
@@ -128,8 +150,18 @@ export default function Reservations() {
     />
   )
 
+  const filterInput = (placeholder, key, type = 'text') => (
+    <input
+      type={type}
+      placeholder={placeholder}
+      value={filters[key]}
+      onChange={e => setFilters(f => ({ ...f, [key]: e.target.value }))}
+      className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-full sm:w-auto"
+    />
+  )
+
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-4 md:p-6 space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -140,35 +172,85 @@ export default function Reservations() {
           onClick={openAdd}
           className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 shadow-sm"
         >
-          <Plus size={15} /> Add Reservation
+          <Plus size={15} /> <span className="hidden sm:inline">Add Reservation</span><span className="sm:hidden">Add</span>
         </button>
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-xl p-3 shadow-sm border border-slate-100 flex flex-wrap gap-2">
-        <select
-          value={filters.year}
-          onChange={e => setFilters(f => ({ ...f, year: +e.target.value }))}
-          className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
-        >
-          {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
-        <select
-          value={filters.month}
-          onChange={e => setFilters(f => ({ ...f, month: e.target.value }))}
-          className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
-        >
-          <option value="">All Months</option>
-          {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-        </select>
-        <select
-          value={filters.source}
-          onChange={e => setFilters(f => ({ ...f, source: e.target.value }))}
-          className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
-        >
-          <option value="">All Sources</option>
-          {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
+      <div className="bg-white rounded-xl p-3 shadow-sm border border-slate-100 space-y-2">
+        {/* Row 1: year / month / source */}
+        <div className="flex flex-wrap gap-2">
+          <select
+            value={filters.year}
+            onChange={e => setFilters(f => ({ ...f, year: +e.target.value }))}
+            className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
+          >
+            {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <select
+            value={filters.month}
+            onChange={e => setFilters(f => ({ ...f, month: e.target.value }))}
+            className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
+          >
+            <option value="">All Months</option>
+            {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+          </select>
+          <select
+            value={filters.source}
+            onChange={e => setFilters(f => ({ ...f, source: e.target.value }))}
+            className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
+          >
+            <option value="">All Sources</option>
+            {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+
+        {/* Row 2: search filters */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Guest name…"
+              value={filters.guestName}
+              onChange={e => setFilters(f => ({ ...f, guestName: e.target.value }))}
+              className="border border-slate-200 rounded-lg pl-7 pr-3 py-1.5 text-sm w-36"
+            />
+          </div>
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Booking ID…"
+              value={filters.bookingId}
+              onChange={e => setFilters(f => ({ ...f, bookingId: e.target.value }))}
+              className="border border-slate-200 rounded-lg pl-7 pr-3 py-1.5 text-sm w-36"
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={filters.dateFrom}
+              onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value }))}
+              className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm"
+            />
+            <span className="text-slate-400 text-xs">to</span>
+            <input
+              type="date"
+              value={filters.dateTo}
+              onChange={e => setFilters(f => ({ ...f, dateTo: e.target.value }))}
+              className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm"
+            />
+          </div>
+          {hasActiveSearch && (
+            <button
+              onClick={clearSearch}
+              className="flex items-center gap-1 text-xs text-slate-500 hover:text-red-600 px-2 py-1.5 border border-slate-200 rounded-lg"
+            >
+              <X size={12} /> Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Summary bar */}
@@ -189,11 +271,12 @@ export default function Reservations() {
 
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
-        <table className="w-full text-sm min-w-[900px]">
+        <table className="w-full text-sm min-w-[960px]">
           <thead>
             <tr className="bg-slate-50 text-slate-500 text-xs uppercase">
               <th className="text-left p-3">Source</th>
-              <th className="text-left p-3">Reservation ID</th>
+              <th className="text-left p-3">Guest</th>
+              <th className="text-left p-3">Booking ID</th>
               <th className="text-left p-3">Check In</th>
               <th className="text-left p-3">Check Out</th>
               <th className="text-center p-3">Nights</th>
@@ -208,12 +291,12 @@ export default function Reservations() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={11} className="p-8 text-center text-slate-400">Loading…</td>
+                <td colSpan={12} className="p-8 text-center text-slate-400">Loading…</td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={11} className="p-8 text-center text-slate-400">
-                  No reservations found for this filter.
+                <td colSpan={12} className="p-8 text-center text-slate-400">
+                  No reservations found.
                 </td>
               </tr>
             ) : filtered.map(r => {
@@ -225,7 +308,10 @@ export default function Reservations() {
                       {r.source}
                     </span>
                   </td>
-                  <td className="p-3 text-slate-400 font-mono text-xs truncate max-w-[120px]">
+                  <td className="p-3 text-slate-700 text-xs max-w-[110px] truncate">
+                    {r.guest_name || '—'}
+                  </td>
+                  <td className="p-3 text-slate-400 font-mono text-xs truncate max-w-[110px]">
                     {r.reservation_id || '—'}
                   </td>
                   <td className="p-3 text-slate-700 tabular-nums">
@@ -252,16 +338,10 @@ export default function Reservations() {
                   </td>
                   <td className="p-3">
                     <div className="flex items-center gap-1.5 justify-end">
-                      <button
-                        onClick={() => openEdit(r)}
-                        className="p-1 text-slate-400 hover:text-indigo-600 rounded"
-                      >
+                      <button onClick={() => openEdit(r)} className="p-1 text-slate-400 hover:text-indigo-600 rounded">
                         <Pencil size={13} />
                       </button>
-                      <button
-                        onClick={() => handleDelete(r.id)}
-                        className="p-1 text-slate-400 hover:text-red-600 rounded"
-                      >
+                      <button onClick={() => handleDelete(r.id)} className="p-1 text-slate-400 hover:text-red-600 rounded">
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -273,21 +353,11 @@ export default function Reservations() {
           {filtered.length > 0 && (
             <tfoot>
               <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-sm">
-                <td colSpan={6} className="p-3 text-slate-600">
-                  Total — {totalNights} nights
-                </td>
-                <td className="p-3 text-right text-slate-700 tabular-nums">
-                  {formatCurrency(totalPayout)}
-                </td>
-                <td className="p-3 text-right text-amber-600 tabular-nums">
-                  {formatCurrency(totalCommission)}
-                </td>
-                <td className="p-3 text-right text-orange-500 tabular-nums">
-                  {formatCurrency(totalDiscount)}
-                </td>
-                <td className="p-3 text-right text-emerald-600 tabular-nums">
-                  {formatCurrency(totalNet)}
-                </td>
+                <td colSpan={7} className="p-3 text-slate-600">Total — {totalNights} nights</td>
+                <td className="p-3 text-right text-slate-700 tabular-nums">{formatCurrency(totalPayout)}</td>
+                <td className="p-3 text-right text-amber-600 tabular-nums">{formatCurrency(totalCommission)}</td>
+                <td className="p-3 text-right text-orange-500 tabular-nums">{formatCurrency(totalDiscount)}</td>
+                <td className="p-3 text-right text-emerald-600 tabular-nums">{formatCurrency(totalNet)}</td>
                 <td />
               </tr>
             </tfoot>
@@ -313,15 +383,24 @@ export default function Reservations() {
                   {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               )}
-              {field('Reservation ID',
+              {field('Guest Name',
                 input({
                   type: 'text',
-                  value: form.reservation_id,
-                  onChange: e => setForm(f => ({ ...f, reservation_id: e.target.value })),
+                  value: form.guest_name,
+                  onChange: e => setForm(f => ({ ...f, guest_name: e.target.value })),
                   placeholder: 'Optional',
                 })
               )}
             </div>
+
+            {field('Reservation ID',
+              input({
+                type: 'text',
+                value: form.reservation_id,
+                onChange: e => setForm(f => ({ ...f, reservation_id: e.target.value })),
+                placeholder: 'Optional',
+              })
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               {field('Check In',
@@ -378,14 +457,11 @@ export default function Reservations() {
               )}
             </div>
 
-            {/* Net preview */}
             {(form.total_payout || form.commission || form.discount) && (
               <div className="bg-emerald-50 rounded-lg px-3 py-2 text-sm flex justify-between">
                 <span className="text-emerald-700 font-medium">Net Revenue Preview</span>
                 <span className="text-emerald-700 font-bold">
-                  {formatCurrency(
-                    (+form.total_payout || 0) - (+form.commission || 0) - (+form.discount || 0)
-                  )}
+                  {formatCurrency((+form.total_payout || 0) - (+form.commission || 0) - (+form.discount || 0))}
                 </span>
               </div>
             )}

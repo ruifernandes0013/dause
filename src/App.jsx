@@ -1,12 +1,18 @@
 import { Routes, Route } from 'react-router-dom'
+import { AuthProvider, useAuth } from './context/AuthContext'
 import Layout from './components/Layout'
+import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import CalendarView from './pages/CalendarView'
 import Reservations from './pages/Reservations'
 import Expenses from './pages/Expenses'
 import Reports from './pages/Reports'
 
-export default function App() {
+function AppRoutes() {
+  const { authed } = useAuth()
+
+  if (!authed) return <Login />
+
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
@@ -17,5 +23,13 @@ export default function App() {
         <Route path="reports" element={<Reports />} />
       </Route>
     </Routes>
+  )
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
   )
 }
