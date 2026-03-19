@@ -96,17 +96,19 @@ export default function Expenses() {
     fetchData()
   }
 
+  const norm = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+
   // Category summary for the filtered set
   const categorySummary = EXPENSE_CATEGORIES.map(cat => ({
     category: cat,
-    total: filtered.filter(e => e.category === cat).reduce((s, e) => s + +e.amount, 0),
+    total: filtered.filter(e => norm(e.category) === norm(cat)).reduce((s, e) => s + +e.amount, 0),
   })).filter(c => c.total > 0)
 
   const grandTotal = filtered.reduce((s, e) => s + +e.amount, 0)
 
   // Monthly chart data — use ALL expenses for the year (not filtered by month)
   const activeCategories = EXPENSE_CATEGORIES.filter(cat =>
-    expenses.some(e => e.category === cat && +e.amount > 0)
+    expenses.some(e => norm(e.category) === norm(cat) && +e.amount > 0)
   )
 
   const monthlyChartData = MONTHS.map((name, i) => {
@@ -115,7 +117,7 @@ export default function Expenses() {
     let total = 0
     activeCategories.forEach(cat => {
       const v = expenses
-        .filter(e => +e.month === m && e.category === cat)
+        .filter(e => +e.month === m && norm(e.category) === norm(cat))
         .reduce((s, e) => s + +e.amount, 0)
       row[cat] = +v.toFixed(2)
       total += v

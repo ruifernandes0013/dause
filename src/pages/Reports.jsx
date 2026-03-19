@@ -33,6 +33,9 @@ export default function Reports() {
     manual ? setRefreshing(false) : setLoading(false)
   }
 
+  // Normalize strings for comparison: strip accents, lowercase, trim
+  const norm = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+
   // ── Build per-month data ──────────────────────────────────────────────────
   const monthly = MONTHS.map((name, i) => {
     const m = i + 1
@@ -48,7 +51,7 @@ export default function Reports() {
     const byCategory = {}
     EXPENSE_CATEGORIES.forEach(cat => {
       byCategory[cat] = mExp
-        .filter(e => (e.category || '').trim() === cat.trim())
+        .filter(e => norm(e.category) === norm(cat))
         .reduce((s, e) => s + +e.amount, 0)
     })
     const totalExpenses = mExp.reduce((s, e) => s + +e.amount, 0)
@@ -78,7 +81,7 @@ export default function Reports() {
   }
   EXPENSE_CATEGORIES.forEach(cat => {
     totals[cat] = expenses
-      .filter(e => (e.category || '').trim() === cat.trim())
+      .filter(e => norm(e.category) === norm(cat))
       .reduce((s, e) => s + +e.amount, 0)
   })
 
