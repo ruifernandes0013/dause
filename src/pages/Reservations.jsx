@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Pencil, Trash2, Search, X } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, X, RefreshCw } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import Modal from '../components/Modal'
 import {
@@ -23,6 +23,7 @@ const EMPTY = {
 export default function Reservations() {
   const [reservations, setReservations] = useState([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY)
@@ -39,8 +40,8 @@ export default function Reservations() {
 
   useEffect(() => { fetchData() }, [filters.year])
 
-  async function fetchData() {
-    setLoading(true)
+  async function fetchData(manual = false) {
+    manual ? setRefreshing(true) : setLoading(true)
     const { data, error } = await supabase
       .from('reservations')
       .select('*')
@@ -49,7 +50,7 @@ export default function Reservations() {
       .order('check_in', { ascending: true })
     if (error) console.error(error)
     setReservations(data || [])
-    setLoading(false)
+    manual ? setRefreshing(false) : setLoading(false)
   }
 
   const filtered = reservations.filter(r => {
@@ -168,12 +169,22 @@ export default function Reservations() {
           <h1 className="text-xl font-bold text-slate-800">Reservations</h1>
           <p className="text-slate-500 text-sm">{filtered.length} results</p>
         </div>
-        <button
-          onClick={openAdd}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 shadow-sm"
-        >
-          <Plus size={15} /> <span className="hidden sm:inline">Add Reservation</span><span className="sm:hidden">Add</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => fetchData(true)}
+            disabled={refreshing}
+            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 shadow-sm disabled:opacity-50"
+            title="Refresh data"
+          >
+            <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+          <button
+            onClick={openAdd}
+            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 shadow-sm"
+          >
+            <Plus size={15} /> <span className="hidden sm:inline">Add Reservation</span><span className="sm:hidden">Add</span>
+          </button>
+        </div>
       </div>
 
       {/* Filters */}

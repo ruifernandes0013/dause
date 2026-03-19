@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import {
   TrendingUp, TrendingDown, DollarSign, Calendar,
-  Users, Percent, ArrowUpRight, ArrowDownRight,
+  Users, Percent, ArrowUpRight, ArrowDownRight, RefreshCw,
+  BedDouble, Star,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  PieChart, Pie, Cell, ResponsiveContainer,
+  PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line,
 } from 'recharts'
 import { supabase } from '../lib/supabase'
 import {
@@ -18,11 +19,12 @@ export default function Dashboard() {
   const [reservations, setReservations] = useState([])
   const [expenses, setExpenses] = useState([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => { fetchData() }, [year])
 
-  async function fetchData() {
-    setLoading(true)
+  async function fetchData(manual = false) {
+    manual ? setRefreshing(true) : setLoading(true)
     const [{ data: res, error: re }, { data: exp, error: ee }] = await Promise.all([
       supabase
         .from('reservations')
@@ -36,7 +38,7 @@ export default function Dashboard() {
     if (ee) console.error(ee)
     setReservations(res || [])
     setExpenses(exp || [])
-    setLoading(false)
+    manual ? setRefreshing(false) : setLoading(false)
   }
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
@@ -47,7 +49,12 @@ export default function Dashboard() {
   const totalExpenses = expenses.reduce((s, e) => s + +e.amount, 0)
   const netIncome = grossIncome - totalExpenses
   const totalNights = reservations.reduce((s, r) => s + nightsBetween(r.check_in, r.check_out), 0)
-  const occupancy = Math.round((totalNights / 365) * 100)
+  const daysInYear = (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 366 : 365
+  const occupancy = Math.round((totalNights / daysInYear) * 100)
+  const adr = totalNights > 0 ? grossIncome / totalNights : 0
+  const revPar = grossIncome / daysInYear
+  const avgStay = reservations.length > 0 ? totalNights / reservations.length : 0
+  const avgBookingValue = reservations.length > 0 ? totalRevenue / reservations.length : 0
 
   // ── Monthly bar chart data ────────────────────────────────────────────────
   const monthlyData = MONTHS.map((name, i) => {
@@ -58,7 +65,17 @@ export default function Dashboard() {
       (s, r) => s + +r.total_payout - +(r.commission || 0) - +(r.discount || 0), 0
     )
     const exp = expenses.filter(e => +e.month === m).reduce((s, e) => s + +e.amount, 0)
-    return { month: name.slice(0, 3), Gross: +gross.toFixed(2), Commission: +commission.toFixed(2), Expenses: +exp.toFixed(2), Net: +(gross - exp).toFixed(2) }
+    const nights = mRes.reduce((s, r) => s + nightsBetween(r.check_in, r.check_out), 0)
+    const monthAdr = nights > 0 ? +(gross / nights).toFixed(2) : 0
+    return {
+      month: name.slice(0, 3),
+      Gross: +gross.toFixed(2),
+      Commission: +commission.toFixed(2),
+      Expenses: +exp.toFixed(2),
+      Net: +(gross - exp).toFixed(2),
+      ADR: monthAdr,
+      Nights: nights,
+    }
   })
 
   // ── Source pie ────────────────────────────────────────────────────────────
@@ -78,22 +95,19 @@ export default function Dashboard() {
       label: 'Total Bookings Value',
       value: formatCurrency(totalRevenue),
       sub: `${reservations.length} reservations`,
-      icon: DollarSign,
-      color: 'text-indigo-600', bg: 'bg-indigo-50',
+      icon: DollarSign, color: 'text-indigo-600', bg: 'bg-indigo-50',
     },
     {
       label: 'Gross Income',
       value: formatCurrency(grossIncome),
       sub: 'After commissions & discounts',
-      icon: TrendingUp,
-      color: 'text-emerald-600', bg: 'bg-emerald-50',
+      icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50',
     },
     {
       label: 'Total Expenses',
       value: formatCurrency(totalExpenses),
       sub: 'Operational costs',
-      icon: TrendingDown,
-      color: 'text-red-500', bg: 'bg-red-50',
+      icon: TrendingDown, color: 'text-red-500', bg: 'bg-red-50',
     },
     {
       label: 'Net Income',
@@ -107,33 +121,59 @@ export default function Dashboard() {
       label: 'Nights Booked',
       value: totalNights,
       sub: `${occupancy}% occupancy rate`,
-      icon: Calendar,
-      color: 'text-blue-600', bg: 'bg-blue-50',
+      icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50',
     },
     {
       label: 'Platform Commissions',
       value: formatCurrency(totalCommissions),
       sub: 'Paid to platforms',
-      icon: Percent,
-      color: 'text-amber-600', bg: 'bg-amber-50',
+      icon: Percent, color: 'text-amber-600', bg: 'bg-amber-50',
+    },
+    {
+      label: 'ADR',
+      value: formatCurrency(adr),
+      sub: 'Avg daily rate (gross/night)',
+      icon: Star, color: 'text-purple-600', bg: 'bg-purple-50',
+    },
+    {
+      label: 'RevPAR',
+      value: formatCurrency(revPar),
+      sub: 'Revenue per available night',
+      icon: BedDouble, color: 'text-sky-600', bg: 'bg-sky-50',
+    },
+    {
+      label: 'Avg Length of Stay',
+      value: `${avgStay.toFixed(1)} nights`,
+      sub: `Avg booking: ${formatCurrency(avgBookingValue)}`,
+      icon: Users, color: 'text-teal-600', bg: 'bg-teal-50',
     },
   ]
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-4 md:p-6 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-800">Dashboard</h1>
           <p className="text-slate-500 text-sm">Property performance overview</p>
         </div>
-        <select
-          value={year}
-          onChange={e => setYear(+e.target.value)}
-          className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm"
-        >
-          {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => fetchData(true)}
+            disabled={refreshing}
+            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 shadow-sm disabled:opacity-50"
+            title="Refresh data"
+          >
+            <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+          <select
+            value={year}
+            onChange={e => setYear(+e.target.value)}
+            className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm"
+          >
+            {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
       </div>
 
       {loading ? (
@@ -158,9 +198,8 @@ export default function Dashboard() {
             ))}
           </div>
 
-          {/* Charts row */}
+          {/* Charts row 1: revenue bar + source pie */}
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-            {/* Monthly bar chart */}
             <div className="xl:col-span-2 bg-white rounded-xl p-4 shadow-sm border border-slate-100">
               <h3 className="font-semibold text-slate-700 text-sm mb-3">Monthly Revenue vs Expenses</h3>
               <ResponsiveContainer width="100%" height={240}>
@@ -178,7 +217,6 @@ export default function Dashboard() {
               </ResponsiveContainer>
             </div>
 
-            {/* Source pie */}
             <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
               <h3 className="font-semibold text-slate-700 text-sm mb-3">Revenue by Source</h3>
               {sourceData.length === 0 ? (
@@ -206,10 +244,7 @@ export default function Dashboard() {
                     {sourceData.map(s => (
                       <div key={s.name} className="flex items-center justify-between text-xs">
                         <div className="flex items-center gap-1.5">
-                          <div
-                            className="w-2.5 h-2.5 rounded-full"
-                            style={{ background: SOURCE_COLORS[s.name] }}
-                          />
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ background: SOURCE_COLORS[s.name] }} />
                           <span className="text-slate-600">{s.name}</span>
                         </div>
                         <div className="text-right">
@@ -224,6 +259,42 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {/* Charts row 2: ADR + Nights per month */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
+              <h3 className="font-semibold text-slate-700 text-sm mb-3">ADR per Month (€/night)</h3>
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={monthlyData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `€${v}`} width={55} />
+                  <Tooltip formatter={v => formatCurrency(v)} />
+                  <Line
+                    type="monotone"
+                    dataKey="ADR"
+                    stroke="#8b5cf6"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                    activeDot={{ r: 5 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
+              <h3 className="font-semibold text-slate-700 text-sm mb-3">Nights Booked per Month</h3>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={monthlyData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} width={30} />
+                  <Tooltip />
+                  <Bar dataKey="Nights" fill="#3b82f6" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
           {/* Recent bookings */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-100">
             <div className="px-4 py-3 border-b border-slate-100">
@@ -234,6 +305,7 @@ export default function Dashboard() {
                 <thead>
                   <tr className="bg-slate-50 text-slate-500 text-xs uppercase">
                     <th className="text-left p-3">Source</th>
+                    <th className="text-left p-3">Guest</th>
                     <th className="text-left p-3">Check In</th>
                     <th className="text-left p-3">Check Out</th>
                     <th className="text-center p-3">Nights</th>
@@ -250,6 +322,7 @@ export default function Dashboard() {
                           {r.source}
                         </span>
                       </td>
+                      <td className="p-3 text-slate-600 text-xs">{r.guest_name || '—'}</td>
                       <td className="p-3 text-slate-600 tabular-nums">
                         {new Date(r.check_in).toLocaleDateString('pt-PT')}
                       </td>
@@ -272,7 +345,7 @@ export default function Dashboard() {
                   ))}
                   {reservations.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-400 text-sm">
+                      <td colSpan={8} className="p-8 text-center text-slate-400 text-sm">
                         No bookings yet. Add your first reservation.
                       </td>
                     </tr>

@@ -3,6 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, LineChart, Line,
 } from 'recharts'
+import { RefreshCw } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import {
   formatCurrency, MONTHS, EXPENSE_CATEGORIES,
@@ -13,12 +14,13 @@ export default function Reports() {
   const [year, setYear] = useState(new Date().getFullYear())
   const [reservations, setReservations] = useState([])
   const [expenses, setExpenses] = useState([])
+  const [refreshing, setRefreshing] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { fetchData() }, [year])
 
-  async function fetchData() {
-    setLoading(true)
+  async function fetchData(manual = false) {
+    manual ? setRefreshing(true) : setLoading(true)
     const [{ data: res }, { data: exp }] = await Promise.all([
       supabase.from('reservations').select('*')
         .gte('check_in', `${year}-01-01`)
@@ -28,7 +30,7 @@ export default function Reports() {
     ])
     setReservations(res || [])
     setExpenses(exp || [])
-    setLoading(false)
+    manual ? setRefreshing(false) : setLoading(false)
   }
 
   // ── Build per-month data ──────────────────────────────────────────────────
@@ -52,11 +54,13 @@ export default function Reports() {
     const totalExpenses = mExp.reduce((s, e) => s + +e.amount, 0)
     const netIncome = grossIncome - totalExpenses
 
+    const adr = nights > 0 ? +(grossIncome / nights).toFixed(2) : 0
+
     return {
       name, short: name.slice(0, 3), m,
       totalReservation, commission, discounts,
       grossIncome, totalExpenses, netIncome,
-      nights, bookings: mRes.length,
+      nights, bookings: mRes.length, adr,
       ...byCategory,
     }
   })
@@ -101,13 +105,23 @@ export default function Reports() {
           <h1 className="text-xl font-bold text-slate-800">Annual Report</h1>
           <p className="text-slate-500 text-sm">Full year breakdown</p>
         </div>
-        <select
-          value={year}
-          onChange={e => setYear(+e.target.value)}
-          className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm"
-        >
-          {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => fetchData(true)}
+            disabled={refreshing}
+            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 shadow-sm disabled:opacity-50"
+            title="Refresh data"
+          >
+            <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+          <select
+            value={year}
+            onChange={e => setYear(+e.target.value)}
+            className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm"
+          >
+            {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
       </div>
 
       {loading ? (
@@ -129,21 +143,46 @@ export default function Reports() {
             ))}
           </div>
 
-          {/* Bar chart */}
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-            <h3 className="font-semibold text-slate-700 text-sm mb-3">Monthly Performance {year}</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={barData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `€${v}`} width={60} />
-                <Tooltip formatter={v => formatCurrency(v)} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="Gross Income" fill="#6366f1" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="Expenses" fill="#ef4444" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="Net Income" fill="#10b981" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          {/* Charts row */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
+              <h3 className="font-semibold text-slate-700 text-sm mb-3">Monthly Performance {year}</h3>
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={barData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `€${v}`} width={60} />
+                  <Tooltip formatter={v => formatCurrency(v)} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="Gross Income" fill="#6366f1" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="Expenses" fill="#ef4444" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="Net Income" fill="#10b981" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
+              <h3 className="font-semibold text-slate-700 text-sm mb-3">ADR per Month (€/night)</h3>
+              <ResponsiveContainer width="100%" height={240}>
+                <LineChart
+                  data={monthly.map(m => ({ month: m.short, ADR: m.adr }))}
+                  margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `€${v}`} width={60} />
+                  <Tooltip formatter={v => formatCurrency(v)} />
+                  <Line
+                    type="monotone"
+                    dataKey="ADR"
+                    stroke="#8b5cf6"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                    activeDot={{ r: 5 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
 
           {/* Excel-style breakdown table */}

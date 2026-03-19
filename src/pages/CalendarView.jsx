@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { YEAR_OPTIONS, SOURCE_BADGE } from '../utils/formatters'
 
@@ -15,18 +15,19 @@ export default function CalendarView() {
   const [year, setYear] = useState(today.getFullYear())
   const [reservations, setReservations] = useState([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => { fetchData() }, [year])
 
-  async function fetchData() {
-    setLoading(true)
+  async function fetchData(manual = false) {
+    manual ? setRefreshing(true) : setLoading(true)
     const { data } = await supabase
       .from('reservations')
       .select('*')
       .gte('check_out', `${year}-01-01`)
       .lte('check_in', `${year}-12-31`)
     setReservations(data || [])
-    setLoading(false)
+    manual ? setRefreshing(false) : setLoading(false)
   }
 
   function prevMonth() {
@@ -71,13 +72,23 @@ export default function CalendarView() {
           <h1 className="text-xl font-bold text-slate-800">Calendar</h1>
           <p className="text-slate-500 text-sm">Occupancy overview</p>
         </div>
-        <select
-          value={year}
-          onChange={e => setYear(+e.target.value)}
-          className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm"
-        >
-          {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => fetchData(true)}
+            disabled={refreshing}
+            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 shadow-sm disabled:opacity-50"
+            title="Refresh data"
+          >
+            <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+          <select
+            value={year}
+            onChange={e => setYear(+e.target.value)}
+            className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm"
+          >
+            {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
