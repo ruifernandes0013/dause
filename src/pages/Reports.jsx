@@ -48,7 +48,7 @@ export default function Reports() {
     const byCategory = {}
     EXPENSE_CATEGORIES.forEach(cat => {
       byCategory[cat] = mExp
-        .filter(e => e.category === cat)
+        .filter(e => (e.category || '').trim() === cat.trim())
         .reduce((s, e) => s + +e.amount, 0)
     })
     const totalExpenses = mExp.reduce((s, e) => s + +e.amount, 0)
@@ -77,7 +77,9 @@ export default function Reports() {
     bookings: monthly.reduce((s, m) => s + m.bookings, 0),
   }
   EXPENSE_CATEGORIES.forEach(cat => {
-    totals[cat] = monthly.reduce((s, m) => s + (m[cat] || 0), 0)
+    totals[cat] = expenses
+      .filter(e => (e.category || '').trim() === cat.trim())
+      .reduce((s, e) => s + +e.amount, 0)
   })
 
   // Always show all categories; fmt() shows '—' for zero values
