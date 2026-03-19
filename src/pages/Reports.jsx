@@ -35,7 +35,7 @@ export default function Reports() {
   const monthly = MONTHS.map((name, i) => {
     const m = i + 1
     const mRes = reservations.filter(r => new Date(r.check_in).getMonth() + 1 === m)
-    const mExp = expenses.filter(e => e.month === m)
+    const mExp = expenses.filter(e => +e.month === m)
 
     const totalReservation = mRes.reduce((s, r) => s + +r.total_payout, 0)
     const commission = mRes.reduce((s, r) => s + +(r.commission || 0), 0)

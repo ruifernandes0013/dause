@@ -56,7 +56,7 @@ export default function Dashboard() {
     const gross = mRes.reduce(
       (s, r) => s + +r.total_payout - +(r.commission || 0) - +(r.discount || 0), 0
     )
-    const exp = expenses.filter(e => e.month === m).reduce((s, e) => s + +e.amount, 0)
+    const exp = expenses.filter(e => +e.month === m).reduce((s, e) => s + +e.amount, 0)
     return { month: name.slice(0, 3), Gross: +gross.toFixed(2), Expenses: +exp.toFixed(2), Net: +(gross - exp).toFixed(2) }
   })
 
