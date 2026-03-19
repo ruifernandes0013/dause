@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
+import CalendarView from './pages/CalendarView'
 import Reservations from './pages/Reservations'
 import Expenses from './pages/Expenses'
 import Reports from './pages/Reports'
@@ -10,6 +11,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Layout />}>
         <Route index element={<Dashboard />} />
+        <Route path="calendar" element={<CalendarView />} />
         <Route path="reservations" element={<Reservations />} />
         <Route path="expenses" element={<Expenses />} />
         <Route path="reports" element={<Reports />} />
