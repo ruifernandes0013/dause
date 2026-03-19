@@ -53,11 +53,12 @@ export default function Dashboard() {
   const monthlyData = MONTHS.map((name, i) => {
     const m = i + 1
     const mRes = reservations.filter(r => new Date(r.check_in).getMonth() + 1 === m)
+    const commission = mRes.reduce((s, r) => s + +(r.commission || 0), 0)
     const gross = mRes.reduce(
       (s, r) => s + +r.total_payout - +(r.commission || 0) - +(r.discount || 0), 0
     )
     const exp = expenses.filter(e => +e.month === m).reduce((s, e) => s + +e.amount, 0)
-    return { month: name.slice(0, 3), Gross: +gross.toFixed(2), Expenses: +exp.toFixed(2), Net: +(gross - exp).toFixed(2) }
+    return { month: name.slice(0, 3), Gross: +gross.toFixed(2), Commission: +commission.toFixed(2), Expenses: +exp.toFixed(2), Net: +(gross - exp).toFixed(2) }
   })
 
   // ── Source pie ────────────────────────────────────────────────────────────
@@ -170,6 +171,7 @@ export default function Dashboard() {
                   <Tooltip formatter={v => formatCurrency(v)} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Bar dataKey="Gross" fill="#6366f1" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="Commission" fill="#f59e0b" radius={[3, 3, 0, 0]} />
                   <Bar dataKey="Expenses" fill="#ef4444" radius={[3, 3, 0, 0]} />
                   <Bar dataKey="Net" fill="#10b981" radius={[3, 3, 0, 0]} />
                 </BarChart>
