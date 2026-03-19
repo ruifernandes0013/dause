@@ -80,10 +80,8 @@ export default function Reports() {
     totals[cat] = monthly.reduce((s, m) => s + (m[cat] || 0), 0)
   })
 
-  // Show categories that have any expense entry for the year (direct check on raw data)
-  const activeCategories = EXPENSE_CATEGORIES.filter(cat =>
-    expenses.some(e => e.category === cat)
-  )
+  // Always show all categories; fmt() shows '—' for zero values
+  const activeCategories = EXPENSE_CATEGORIES
 
   // ── Chart data ─────────────────────────────────────────────────────────────
   const barData = monthly.map(m => ({
@@ -310,13 +308,13 @@ export default function Reports() {
             </table>
           </div>
 
-          {/* Expense breakdown bar chart */}
-          {activeCategories.length > 0 && (
+          {/* Expense breakdown bar chart — only categories with spend */}
+          {EXPENSE_CATEGORIES.some(cat => totals[cat] > 0) && (
             <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
               <h3 className="font-semibold text-slate-700 text-sm mb-3">Expense Breakdown by Category</h3>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart
-                  data={activeCategories.map(cat => ({ name: cat, value: +totals[cat].toFixed(2) }))}
+                  data={EXPENSE_CATEGORIES.filter(cat => totals[cat] > 0).map(cat => ({ name: cat, value: +totals[cat].toFixed(2) }))}
                   layout="vertical"
                   margin={{ top: 0, right: 20, left: 140, bottom: 0 }}
                 >
