@@ -151,6 +151,12 @@ export default function Reservations() {
   const totalNet = totalPayout - totalCommission - totalDiscount
   const totalNights = filtered.reduce((s, r) => s + nightsBetween(r.check_in, r.check_out), 0)
   const unpaidCount = filtered.filter(r => !r.paid).length
+  const totalPaid = filtered
+    .filter(r => r.paid)
+    .reduce((s, r) => s + +r.total_payout - +(r.commission || 0) - +(r.discount || 0), 0)
+  const totalUnpaid = filtered
+    .filter(r => !r.paid)
+    .reduce((s, r) => s + +r.total_payout - +(r.commission || 0) - +(r.discount || 0), 0)
 
   const field = (label, children) => (
     <div>
@@ -426,6 +432,20 @@ export default function Reservations() {
                 <td className="p-3 text-right text-slate-700 tabular-nums">{formatCurrency(totalPayout)}</td>
                 <td className="p-3 text-right text-amber-600 tabular-nums">{formatCurrency(totalCommission)}</td>
                 <td className="p-3 text-right text-emerald-600 tabular-nums">{formatCurrency(totalNet)}</td>
+                <td />
+              </tr>
+              <tr className="border-t border-slate-200 text-xs">
+                <td colSpan={8} className="px-3 py-2 text-slate-400">Net breakdown by payment status</td>
+                <td colSpan={2} className="px-3 py-2 text-right">
+                  <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
+                    <CheckCircle2 size={11} /> Paid: {formatCurrency(totalPaid)}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <span className="inline-flex items-center gap-1 text-orange-500 font-medium">
+                    <Clock size={11} /> Unpaid: {formatCurrency(totalUnpaid)}
+                  </span>
+                </td>
                 <td />
               </tr>
             </tfoot>
