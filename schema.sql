@@ -42,3 +42,6 @@ CREATE TABLE IF NOT EXISTS expenses (
 
 -- Migration: add guest_name column (run if table already exists)
 ALTER TABLE reservations ADD COLUMN IF NOT EXISTS guest_name VARCHAR(200);
+
+-- Migration: add paid column
+ALTER TABLE reservations ADD COLUMN IF NOT EXISTS paid BOOLEAN DEFAULT FALSE;
