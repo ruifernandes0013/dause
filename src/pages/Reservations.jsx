@@ -37,7 +37,7 @@ export default function Reservations() {
   const [togglingPaid, setTogglingPaid] = useState(null)
   const [filters, setFilters] = useState({
     year: new Date().getFullYear(),
-    month: '',
+    month: new Date().getMonth() + 1,
     source: '',
     dateFrom: '',
     dateTo: '',
