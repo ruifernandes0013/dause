@@ -312,13 +312,11 @@ export default function Reservations() {
 
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
-        <table className="w-full text-sm min-w-[960px]">
+        <table className="w-full text-sm min-w-[700px]">
           <thead>
             <tr className="bg-slate-50 text-slate-500 text-xs uppercase">
               <th className="text-left p-3">Status</th>
               <th className="text-left p-3">Source</th>
-              <th className="text-left p-3">Guest</th>
-              <th className="text-left p-3">Booking ID</th>
               <th className="text-left p-3">Check In</th>
               <th className="text-left p-3">Check Out</th>
               <th className="text-center p-3">Nights</th>
@@ -332,11 +330,11 @@ export default function Reservations() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={12} className="p-8 text-center text-slate-400">Loading…</td>
+                <td colSpan={10} className="p-8 text-center text-slate-400">Loading…</td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={12} className="p-8 text-center text-slate-400">No reservations found.</td>
+                <td colSpan={10} className="p-8 text-center text-slate-400">No reservations found.</td>
               </tr>
             ) : filtered.map(r => {
               const isCurrent = isCurrentBooking(r)
@@ -386,12 +384,6 @@ export default function Reservations() {
                     </div>
                   </td>
 
-                  <td className="p-3 text-slate-700 text-xs max-w-[110px] truncate">
-                    {r.guest_name || '—'}
-                  </td>
-                  <td className="p-3 text-slate-400 font-mono text-xs truncate max-w-[110px]">
-                    {r.reservation_id || '—'}
-                  </td>
                   <td className="p-3 text-slate-700 tabular-nums">
                     {new Date(r.check_in).toLocaleDateString('pt-PT')}
                   </td>
@@ -428,14 +420,14 @@ export default function Reservations() {
           {filtered.length > 0 && (
             <tfoot>
               <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-sm">
-                <td colSpan={8} className="p-3 text-slate-600">Total — {totalNights} nights</td>
+                <td colSpan={6} className="p-3 text-slate-600">Total — {totalNights} nights</td>
                 <td className="p-3 text-right text-slate-700 tabular-nums">{formatCurrency(totalPayout)}</td>
                 <td className="p-3 text-right text-amber-600 tabular-nums">{formatCurrency(totalCommission)}</td>
                 <td className="p-3 text-right text-emerald-600 tabular-nums">{formatCurrency(totalNet)}</td>
                 <td />
               </tr>
               <tr className="border-t border-slate-200 text-xs">
-                <td colSpan={8} className="px-3 py-2 text-slate-400">Net breakdown by payment status</td>
+                <td colSpan={6} className="px-3 py-2 text-slate-400">Net breakdown by payment status</td>
                 <td colSpan={2} className="px-3 py-2 text-right">
                   <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
                     <CheckCircle2 size={11} /> Paid: {formatCurrency(totalPaid)}
