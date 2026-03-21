@@ -1,14 +1,21 @@
 import { useState, useEffect } from 'react'
 import {
+  TrendingUp, TrendingDown, DollarSign, Calendar,
+  Users, Percent, ArrowUpRight, ArrowDownRight, RefreshCw,
+  BedDouble, Star,
+} from 'lucide-react'
+import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, LineChart, Line,
+  PieChart, Pie, Cell,
 } from 'recharts'
-import { RefreshCw } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import {
   formatCurrency, MONTHS, EXPENSE_CATEGORIES,
-  nightsBetween, YEAR_OPTIONS,
+  nightsBetween, YEAR_OPTIONS, SOURCE_COLORS, SOURCE_BADGE,
 } from '../utils/formatters'
+
+const norm = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
 export default function Reports() {
   const [year, setYear] = useState(new Date().getFullYear())
@@ -33,10 +40,43 @@ export default function Reports() {
     manual ? setRefreshing(false) : setLoading(false)
   }
 
-  // Normalize strings for comparison: strip accents, lowercase, trim
-  const norm = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+  // ── KPIs ──────────────────────────────────────────────────────────────────
+  const totalRevenue = reservations.reduce((s, r) => s + +r.total_payout, 0)
+  const totalCommissions = reservations.reduce((s, r) => s + +(r.commission || 0), 0)
+  const totalDiscounts = reservations.reduce((s, r) => s + +(r.discount || 0), 0)
+  const grossIncome = totalRevenue - totalCommissions - totalDiscounts
+  const totalExpenses = expenses.reduce((s, e) => s + +e.amount, 0)
+  const netIncome = grossIncome - totalExpenses
+  const totalNights = reservations.reduce((s, r) => s + nightsBetween(r.check_in, r.check_out), 0)
+  const daysInYear = (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 366 : 365
+  const occupancy = Math.round((totalNights / daysInYear) * 100)
+  const adr = totalNights > 0 ? grossIncome / totalNights : 0
+  const revPar = grossIncome / daysInYear
+  const avgStay = reservations.length > 0 ? totalNights / reservations.length : 0
+  const avgBookingValue = reservations.length > 0 ? totalRevenue / reservations.length : 0
 
-  // ── Build per-month data ──────────────────────────────────────────────────
+  const kpis = [
+    { label: 'Total Bookings Value', value: formatCurrency(totalRevenue), sub: `${reservations.length} reservations`, icon: DollarSign, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+    { label: 'Gross Income', value: formatCurrency(grossIncome), sub: 'After commissions & discounts', icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { label: 'Total Expenses', value: formatCurrency(totalExpenses), sub: 'Operational costs', icon: TrendingDown, color: 'text-red-500', bg: 'bg-red-50' },
+    { label: 'Net Income', value: formatCurrency(netIncome), sub: 'After all deductions', icon: netIncome >= 0 ? ArrowUpRight : ArrowDownRight, color: netIncome >= 0 ? 'text-emerald-600' : 'text-red-600', bg: netIncome >= 0 ? 'bg-emerald-50' : 'bg-red-50' },
+    { label: 'Nights Booked', value: totalNights, sub: `${occupancy}% occupancy rate`, icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'Platform Commissions', value: formatCurrency(totalCommissions), sub: 'Paid to platforms', icon: Percent, color: 'text-amber-600', bg: 'bg-amber-50' },
+    { label: 'ADR', value: formatCurrency(adr), sub: 'Avg daily rate (gross/night)', icon: Star, color: 'text-purple-600', bg: 'bg-purple-50' },
+    { label: 'RevPAR', value: formatCurrency(revPar), sub: 'Revenue per available night', icon: BedDouble, color: 'text-sky-600', bg: 'bg-sky-50' },
+    { label: 'Avg Length of Stay', value: `${avgStay.toFixed(1)} nights`, sub: `Avg booking: ${formatCurrency(avgBookingValue)}`, icon: Users, color: 'text-teal-600', bg: 'bg-teal-50' },
+  ]
+
+  // ── Source pie ────────────────────────────────────────────────────────────
+  const sourceData = ['Airbnb', 'Booking', 'Direct']
+    .map(src => ({
+      name: src,
+      value: +reservations.filter(r => r.source === src).reduce((s, r) => s + +r.total_payout, 0).toFixed(2),
+      count: reservations.filter(r => r.source === src).length,
+    }))
+    .filter(s => s.value > 0)
+
+  // ── Per-month data ────────────────────────────────────────────────────────
   const monthly = MONTHS.map((name, i) => {
     const m = i + 1
     const mRes = reservations.filter(r => new Date(r.check_in).getMonth() + 1 === m)
@@ -45,30 +85,32 @@ export default function Reports() {
     const totalReservation = mRes.reduce((s, r) => s + +r.total_payout, 0)
     const commission = mRes.reduce((s, r) => s + +(r.commission || 0), 0)
     const discounts = mRes.reduce((s, r) => s + +(r.discount || 0), 0)
-    const grossIncome = totalReservation - commission - discounts
+    const mGross = totalReservation - commission - discounts
+    const mExpTotal = mExp.reduce((s, e) => s + +e.amount, 0)
     const nights = mRes.reduce((s, r) => s + nightsBetween(r.check_in, r.check_out), 0)
+    const monthAdr = nights > 0 ? +(mGross / nights).toFixed(2) : 0
 
     const byCategory = {}
     EXPENSE_CATEGORIES.forEach(cat => {
-      byCategory[cat] = mExp
-        .filter(e => norm(e.category) === norm(cat))
-        .reduce((s, e) => s + +e.amount, 0)
+      byCategory[cat] = mExp.filter(e => norm(e.category) === norm(cat)).reduce((s, e) => s + +e.amount, 0)
     })
-    const totalExpenses = mExp.reduce((s, e) => s + +e.amount, 0)
-    const netIncome = grossIncome - totalExpenses
-
-    const adr = nights > 0 ? +(grossIncome / nights).toFixed(2) : 0
 
     return {
       name, short: name.slice(0, 3), m,
       totalReservation, commission, discounts,
-      grossIncome, totalExpenses, netIncome,
-      nights, bookings: mRes.length, adr,
+      grossIncome: mGross, totalExpenses: mExpTotal, netIncome: mGross - mExpTotal,
+      nights, bookings: mRes.length, adr: monthAdr,
+      month: name.slice(0, 3),
+      'Gross Income': +mGross.toFixed(2),
+      'Expenses': +mExpTotal.toFixed(2),
+      'Net Income': +(mGross - mExpTotal).toFixed(2),
+      Nights: nights,
+      ADR: monthAdr,
       ...byCategory,
     }
   })
 
-  // ── Year totals row ───────────────────────────────────────────────────────
+  // ── Year totals ───────────────────────────────────────────────────────────
   const totals = {
     totalReservation: monthly.reduce((s, m) => s + m.totalReservation, 0),
     commission: monthly.reduce((s, m) => s + m.commission, 0),
@@ -80,23 +122,9 @@ export default function Reports() {
     bookings: monthly.reduce((s, m) => s + m.bookings, 0),
   }
   EXPENSE_CATEGORIES.forEach(cat => {
-    totals[cat] = expenses
-      .filter(e => norm(e.category) === norm(cat))
-      .reduce((s, e) => s + +e.amount, 0)
+    totals[cat] = expenses.filter(e => norm(e.category) === norm(cat)).reduce((s, e) => s + +e.amount, 0)
   })
 
-  // Always show all categories; fmt() shows '—' for zero values
-  const activeCategories = EXPENSE_CATEGORIES
-
-  // ── Chart data ─────────────────────────────────────────────────────────────
-  const barData = monthly.map(m => ({
-    month: m.short,
-    'Gross Income': +m.grossIncome.toFixed(2),
-    'Expenses': +m.totalExpenses.toFixed(2),
-    'Net Income': +m.netIncome.toFixed(2),
-  }))
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
   const fmt = (v) => v === 0 ? '—' : formatCurrency(v)
   const fmtNet = (v) => v === 0 ? '—' : (
     <span className={v >= 0 ? 'text-emerald-600' : 'text-red-600'}>{formatCurrency(v)}</span>
@@ -133,27 +161,30 @@ export default function Reports() {
         <div className="flex items-center justify-center h-64 text-slate-400">Loading…</div>
       ) : (
         <>
-          {/* Year KPI banner */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { label: 'Total Bookings Value', val: totals.totalReservation, cls: 'text-indigo-600' },
-              { label: 'Gross Income', val: totals.grossIncome, cls: 'text-blue-600' },
-              { label: 'Total Expenses', val: totals.totalExpenses, cls: 'text-red-600' },
-              { label: 'Net Income', val: totals.netIncome, cls: totals.netIncome >= 0 ? 'text-emerald-600' : 'text-red-600' },
-            ].map(({ label, val, cls }) => (
-              <div key={label} className="bg-white rounded-xl p-4 shadow-sm border border-slate-100 text-center">
-                <p className="text-xs text-slate-400">{label}</p>
-                <p className={`text-lg font-bold mt-0.5 ${cls}`}>{formatCurrency(val)}</p>
+          {/* Full KPI cards */}
+          <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
+            {kpis.map(({ label, value, sub, icon: Icon, color, bg }) => (
+              <div key={label} className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs text-slate-500">{label}</p>
+                    <p className={`text-xl font-bold mt-0.5 ${color}`}>{value}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{sub}</p>
+                  </div>
+                  <div className={`${bg} ${color} p-2 rounded-lg`}>
+                    <Icon size={18} />
+                  </div>
+                </div>
               </div>
             ))}
           </div>
 
-          {/* Charts row */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-              <h3 className="font-semibold text-slate-700 text-sm mb-3">Monthly Performance {year}</h3>
+          {/* Charts row 1: Monthly Revenue vs Expenses + Source pie */}
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <div className="xl:col-span-2 bg-white rounded-xl p-4 shadow-sm border border-slate-100">
+              <h3 className="font-semibold text-slate-700 text-sm mb-3">Monthly Revenue vs Expenses {year}</h3>
               <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={barData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                <BarChart data={monthly} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `€${v}`} width={60} />
@@ -167,30 +198,71 @@ export default function Reports() {
             </div>
 
             <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
+              <h3 className="font-semibold text-slate-700 text-sm mb-3">Revenue by Source</h3>
+              {sourceData.length === 0 ? (
+                <div className="flex items-center justify-center h-40 text-slate-400 text-sm">No data</div>
+              ) : (
+                <>
+                  <ResponsiveContainer width="100%" height={180}>
+                    <PieChart>
+                      <Pie data={sourceData} cx="50%" cy="50%" outerRadius={75} dataKey="value"
+                        label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                        {sourceData.map(entry => (
+                          <Cell key={entry.name} fill={SOURCE_COLORS[entry.name] || '#94a3b8'} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={v => formatCurrency(v)} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="mt-2 space-y-1.5">
+                    {sourceData.map(s => (
+                      <div key={s.name} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ background: SOURCE_COLORS[s.name] }} />
+                          <span className="text-slate-600">{s.name}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-slate-700 font-medium">{formatCurrency(s.value)}</span>
+                          <span className="text-slate-400 ml-1">({s.count})</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Charts row 2: ADR + Nights */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
               <h3 className="font-semibold text-slate-700 text-sm mb-3">ADR per Month (€/night)</h3>
-              <ResponsiveContainer width="100%" height={240}>
-                <LineChart
-                  data={monthly.map(m => ({ month: m.short, ADR: m.adr }))}
-                  margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
-                >
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={monthly} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `€${v}`} width={60} />
                   <Tooltip formatter={v => formatCurrency(v)} />
-                  <Line
-                    type="monotone"
-                    dataKey="ADR"
-                    stroke="#8b5cf6"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                    activeDot={{ r: 5 }}
-                  />
+                  <Line type="monotone" dataKey="ADR" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
                 </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
+              <h3 className="font-semibold text-slate-700 text-sm mb-3">Nights Booked per Month</h3>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={monthly} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} width={30} />
+                  <Tooltip />
+                  <Bar dataKey="Nights" fill="#3b82f6" radius={[3, 3, 0, 0]} />
+                </BarChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          {/* Excel-style breakdown table */}
+          {/* Monthly Breakdown table */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
             <div className="px-4 py-3 border-b border-slate-100">
               <h3 className="font-semibold text-slate-700 text-sm">Monthly Breakdown {year}</h3>
@@ -206,17 +278,9 @@ export default function Reports() {
                 </tr>
               </thead>
               <tbody>
-
-                {/* ── Revenue section ─────────────────────────────────── */}
                 <tr>
-                  <td
-                    colSpan={14}
-                    className="px-3 py-1.5 bg-indigo-50 text-indigo-700 font-semibold text-[10px] uppercase tracking-widest"
-                  >
-                    Revenue
-                  </td>
+                  <td colSpan={14} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 font-semibold text-[10px] uppercase tracking-widest">Revenue</td>
                 </tr>
-
                 {[
                   { key: 'totalReservation', label: 'Total Reserva', cls: 'text-slate-700' },
                   { key: 'commission', label: 'Comissão Plataforma', cls: 'text-amber-600' },
@@ -224,96 +288,63 @@ export default function Reports() {
                   { key: 'grossIncome', label: 'Rendimento Bruto', cls: 'text-indigo-600 font-bold' },
                 ].map(({ key, label, cls }) => (
                   <tr key={key} className="border-t border-slate-50 hover:bg-slate-50">
-                    <td className={`p-3 sticky left-0 bg-white text-slate-600 ${key === 'grossIncome' ? 'font-semibold' : ''}`}>
-                      {label}
-                    </td>
+                    <td className={`p-3 sticky left-0 bg-white text-slate-600 ${key === 'grossIncome' ? 'font-semibold' : ''}`}>{label}</td>
                     {monthly.map(m => (
-                      <td key={m.m} className={`px-2 py-3 text-right tabular-nums ${cls}`}>
-                        {fmt(m[key])}
-                      </td>
+                      <td key={m.m} className={`px-2 py-3 text-right tabular-nums ${cls}`}>{fmt(m[key])}</td>
                     ))}
-                    <td className={`px-3 py-3 text-right font-bold tabular-nums ${cls}`}>
-                      {fmt(totals[key])}
-                    </td>
+                    <td className={`px-3 py-3 text-right font-bold tabular-nums ${cls}`}>{fmt(totals[key])}</td>
                   </tr>
                 ))}
 
-                {/* ── Expenses section ─────────────────────────────────── */}
                 <tr>
-                  <td
-                    colSpan={14}
-                    className="px-3 py-1.5 bg-red-50 text-red-700 font-semibold text-[10px] uppercase tracking-widest"
-                  >
-                    Despesas
-                  </td>
+                  <td colSpan={14} className="px-3 py-1.5 bg-red-50 text-red-700 font-semibold text-[10px] uppercase tracking-widest">Despesas</td>
                 </tr>
-
-                {activeCategories.map(cat => (
+                {EXPENSE_CATEGORIES.map(cat => (
                   <tr key={cat} className="border-t border-slate-50 hover:bg-slate-50">
                     <td className="p-3 sticky left-0 bg-white text-slate-600">{cat}</td>
                     {monthly.map(m => (
-                      <td key={m.m} className="px-2 py-3 text-right text-red-500 tabular-nums">
-                        {fmt(m[cat] || 0)}
-                      </td>
+                      <td key={m.m} className="px-2 py-3 text-right text-red-500 tabular-nums">{fmt(m[cat] || 0)}</td>
                     ))}
-                    <td className="px-3 py-3 text-right font-bold text-red-600 tabular-nums">
-                      {fmt(totals[cat])}
-                    </td>
+                    <td className="px-3 py-3 text-right font-bold text-red-600 tabular-nums">{fmt(totals[cat])}</td>
                   </tr>
                 ))}
-
                 <tr className="border-t border-slate-200 bg-red-50">
                   <td className="p-3 sticky left-0 bg-red-50 font-bold text-red-700">Total Despesas</td>
                   {monthly.map(m => (
-                    <td key={m.m} className="px-2 py-3 text-right font-bold text-red-700 tabular-nums">
-                      {fmt(m.totalExpenses)}
-                    </td>
+                    <td key={m.m} className="px-2 py-3 text-right font-bold text-red-700 tabular-nums">{fmt(m.totalExpenses)}</td>
                   ))}
-                  <td className="px-3 py-3 text-right font-bold text-red-700 tabular-nums">
-                    {fmt(totals.totalExpenses)}
-                  </td>
+                  <td className="px-3 py-3 text-right font-bold text-red-700 tabular-nums">{fmt(totals.totalExpenses)}</td>
                 </tr>
 
-                {/* ── Net income ───────────────────────────────────────── */}
                 <tr className="border-t-2 border-slate-300 bg-emerald-50">
-                  <td className="p-3 sticky left-0 bg-emerald-50 font-bold text-emerald-700">
-                    Rendimento Líquido
-                  </td>
+                  <td className="p-3 sticky left-0 bg-emerald-50 font-bold text-emerald-700">Rendimento Líquido</td>
                   {monthly.map(m => (
                     <td key={m.m} className="px-2 py-3 text-right font-bold tabular-nums">
                       {m.netIncome === 0 ? '—' : fmtNet(m.netIncome)}
                     </td>
                   ))}
-                  <td className="px-3 py-3 text-right font-bold tabular-nums">
-                    {fmtNet(totals.netIncome)}
-                  </td>
+                  <td className="px-3 py-3 text-right font-bold tabular-nums">{fmtNet(totals.netIncome)}</td>
                 </tr>
 
-                {/* ── Occupancy stats ──────────────────────────────────── */}
                 <tr className="border-t border-slate-100">
                   <td className="p-3 sticky left-0 bg-white text-slate-500">Noites</td>
                   {monthly.map(m => (
-                    <td key={m.m} className="px-2 py-3 text-right text-slate-500">
-                      {m.nights || '—'}
-                    </td>
+                    <td key={m.m} className="px-2 py-3 text-right text-slate-500">{m.nights || '—'}</td>
                   ))}
                   <td className="px-3 py-3 text-right font-medium text-slate-600">{totals.nights}</td>
                 </tr>
                 <tr className="border-t border-slate-50">
                   <td className="p-3 sticky left-0 bg-white text-slate-500">Reservas</td>
                   {monthly.map(m => (
-                    <td key={m.m} className="px-2 py-3 text-right text-slate-500">
-                      {m.bookings || '—'}
-                    </td>
+                    <td key={m.m} className="px-2 py-3 text-right text-slate-500">{m.bookings || '—'}</td>
                   ))}
                   <td className="px-3 py-3 text-right font-medium text-slate-600">{totals.bookings}</td>
                 </tr>
-
               </tbody>
             </table>
           </div>
 
-          {/* Expense breakdown bar chart — only categories with spend */}
+          {/* Expense breakdown horizontal bar chart */}
           {EXPENSE_CATEGORIES.some(cat => totals[cat] > 0) && (
             <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
               <h3 className="font-semibold text-slate-700 text-sm mb-3">Expense Breakdown by Category</h3>
