@@ -4,10 +4,10 @@ import { supabase } from '../lib/supabase'
 import Modal from '../components/Modal'
 import {
   formatCurrency, SOURCES, MONTHS, SOURCE_BADGE,
-  nightsBetween, YEAR_OPTIONS,
+  nightsBetween, YEAR_OPTIONS, EXPENSE_CATEGORIES,
 } from '../utils/formatters'
 
-const EMPTY = {
+const EMPTY_RES = {
   source: 'Booking',
   reservation_id: '',
   guest_name: '',
@@ -20,19 +20,36 @@ const EMPTY = {
   notes: '',
 }
 
+const EMPTY_EXP = {
+  category: 'Água',
+  amount: '',
+  month: new Date().getMonth() + 1,
+  year: new Date().getFullYear(),
+  notes: '',
+}
+
+const CAT_COLORS = [
+  '#6366f1','#f59e0b','#ef4444','#10b981','#3b82f6',
+  '#8b5cf6','#ec4899','#14b8a6','#f97316','#84cc16',
+  '#06b6d4','#a855f7','#64748b',
+]
+
 const todayStr = new Date().toISOString().split('T')[0]
 
 function isCurrentBooking(r) {
   return r.check_in <= todayStr && r.check_out > todayStr
 }
 
+const norm = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+
 export default function Reservations() {
+  // — Reservations state —
   const [reservations, setReservations] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [showModal, setShowModal] = useState(false)
+  const [showResModal, setShowResModal] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState(EMPTY)
+  const [form, setForm] = useState(EMPTY_RES)
   const [saving, setSaving] = useState(false)
   const [togglingPaid, setTogglingPaid] = useState(null)
   const [filters, setFilters] = useState({
@@ -45,8 +62,19 @@ export default function Reservations() {
     bookingId: '',
   })
 
-  useEffect(() => { fetchData() }, [filters.year])
+  // — Expenses state —
+  const [expenses, setExpenses] = useState([])
+  const [expLoading, setExpLoading] = useState(true)
+  const [expRefreshing, setExpRefreshing] = useState(false)
+  const [showExpModal, setShowExpModal] = useState(false)
+  const [expEditing, setExpEditing] = useState(null)
+  const [expForm, setExpForm] = useState(EMPTY_EXP)
+  const [expSaving, setExpSaving] = useState(false)
+  const [expCatFilter, setExpCatFilter] = useState('')
 
+  useEffect(() => { fetchData(); fetchExpenses() }, [filters.year])
+
+  // — Reservations data —
   async function fetchData(manual = false) {
     manual ? setRefreshing(true) : setLoading(true)
     const { data, error } = await supabase
@@ -91,8 +119,8 @@ export default function Reservations() {
 
   function openAdd() {
     setEditing(null)
-    setForm(EMPTY)
-    setShowModal(true)
+    setForm(EMPTY_RES)
+    setShowResModal(true)
   }
 
   function openEdit(r) {
@@ -109,7 +137,7 @@ export default function Reservations() {
       discount: r.discount || '',
       notes: r.notes || '',
     })
-    setShowModal(true)
+    setShowResModal(true)
   }
 
   async function handleSave(e) {
@@ -135,7 +163,7 @@ export default function Reservations() {
       if (error) console.error(error)
     }
     setSaving(false)
-    setShowModal(false)
+    setShowResModal(false)
     fetchData()
   }
 
@@ -148,7 +176,7 @@ export default function Reservations() {
   const totalPayout = filtered.reduce((s, r) => s + +r.total_payout, 0)
   const totalCommission = filtered.reduce((s, r) => s + +(r.commission || 0), 0)
   const totalDiscount = filtered.reduce((s, r) => s + +(r.discount || 0), 0)
-  const totalNet = totalPayout - totalCommission - totalDiscount
+  const totalGross = totalPayout - totalCommission - totalDiscount
   const totalNights = filtered.reduce((s, r) => s + nightsBetween(r.check_in, r.check_out), 0)
   const unpaidCount = filtered.filter(r => !r.paid).length
   const totalPaid = filtered
@@ -158,6 +186,74 @@ export default function Reservations() {
     .filter(r => !r.paid)
     .reduce((s, r) => s + +r.total_payout - +(r.commission || 0) - +(r.discount || 0), 0)
 
+  // — Expenses data —
+  async function fetchExpenses(manual = false) {
+    manual ? setExpRefreshing(true) : setExpLoading(true)
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('*')
+      .eq('year', filters.year)
+      .order('month')
+      .order('created_at')
+    if (error) console.error(error)
+    setExpenses(data || [])
+    manual ? setExpRefreshing(false) : setExpLoading(false)
+  }
+
+  const filteredExp = expenses.filter(e => {
+    if (filters.month && +e.month !== +filters.month) return false
+    if (expCatFilter && norm(e.category) !== norm(expCatFilter)) return false
+    return true
+  })
+
+  const grandTotal = filteredExp.reduce((s, e) => s + +e.amount, 0)
+
+  const categorySummary = EXPENSE_CATEGORIES.map(cat => ({
+    category: cat,
+    total: filteredExp.filter(e => norm(e.category) === norm(cat)).reduce((s, e) => s + +e.amount, 0),
+  })).filter(c => c.total > 0)
+
+  const totalNetRevenue = totalGross - grandTotal
+
+  function openAddExp() {
+    setExpEditing(null)
+    setExpForm({ ...EMPTY_EXP, year: filters.year, month: filters.month ? +filters.month : new Date().getMonth() + 1 })
+    setShowExpModal(true)
+  }
+
+  function openEditExp(e) {
+    setExpEditing(e.id)
+    setExpForm({ category: e.category, amount: e.amount, month: e.month, year: e.year, notes: e.notes || '' })
+    setShowExpModal(true)
+  }
+
+  async function handleExpSave(ev) {
+    ev.preventDefault()
+    setExpSaving(true)
+    const payload = {
+      category: expForm.category,
+      amount: +expForm.amount,
+      month: +expForm.month,
+      year: +expForm.year,
+      notes: expForm.notes || null,
+    }
+    if (expEditing) {
+      await supabase.from('expenses').update(payload).eq('id', expEditing)
+    } else {
+      await supabase.from('expenses').insert(payload)
+    }
+    setExpSaving(false)
+    setShowExpModal(false)
+    fetchExpenses()
+  }
+
+  async function handleExpDelete(id) {
+    if (!window.confirm('Delete this expense?')) return
+    await supabase.from('expenses').delete().eq('id', id)
+    fetchExpenses()
+  }
+
+  // — Form helpers —
   const field = (label, children) => (
     <div>
       <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
@@ -165,12 +261,9 @@ export default function Reservations() {
     </div>
   )
 
-  const input = (props) => (
-    <input
-      {...props}
-      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-    />
-  )
+  const inputCls = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+  const input = (props) => <input {...props} className={inputCls} />
+  const selCls = (props) => <select {...props} className={inputCls} />
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -285,7 +378,7 @@ export default function Reservations() {
           { label: 'Total Payout', val: formatCurrency(totalPayout), cls: 'text-indigo-600' },
           { label: 'Commissions', val: formatCurrency(totalCommission), cls: 'text-amber-600' },
           { label: 'Discounts', val: formatCurrency(totalDiscount), cls: 'text-orange-500' },
-          { label: 'Net Revenue', val: formatCurrency(totalNet), cls: 'text-emerald-600' },
+          { label: 'Gross Revenue', val: formatCurrency(totalGross), cls: 'text-emerald-600' },
         ].map(({ label, val, cls }) => (
           <div key={label} className="bg-white rounded-xl px-3 py-2.5 shadow-sm border border-slate-100 text-center">
             <p className="text-xs text-slate-400">{label}</p>
@@ -310,7 +403,7 @@ export default function Reservations() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Reservations Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
         <table className="w-full text-sm min-w-[700px]">
           <thead>
@@ -323,7 +416,7 @@ export default function Reservations() {
               <th className="text-center p-3">Guests</th>
               <th className="text-right p-3">Payout</th>
               <th className="text-right p-3">Commission</th>
-              <th className="text-right p-3">Net</th>
+              <th className="text-right p-3">Gross</th>
               <th className="p-3 w-16"></th>
             </tr>
           </thead>
@@ -345,12 +438,9 @@ export default function Reservations() {
                   className={`border-t transition-colors ${
                     isCurrent
                       ? 'bg-blue-50 border-blue-100 hover:bg-blue-100'
-                      : r.paid
-                        ? 'border-slate-50 hover:bg-slate-50'
-                        : 'border-slate-50 hover:bg-slate-50'
+                      : 'border-slate-50 hover:bg-slate-50'
                   }`}
                 >
-                  {/* Paid toggle */}
                   <td className="p-3">
                     <button
                       onClick={() => togglePaid(r)}
@@ -369,8 +459,6 @@ export default function Reservations() {
                       )}
                     </button>
                   </td>
-
-                  {/* Source */}
                   <td className="p-3">
                     <div className="flex items-center gap-1.5">
                       <span className={`px-2 py-0.5 rounded text-xs font-medium ${SOURCE_BADGE[r.source] || 'bg-slate-100 text-slate-600'}`}>
@@ -383,7 +471,6 @@ export default function Reservations() {
                       )}
                     </div>
                   </td>
-
                   <td className="p-3 text-slate-700 tabular-nums">
                     {new Date(r.check_in).toLocaleDateString('pt-PT')}
                   </td>
@@ -423,11 +510,11 @@ export default function Reservations() {
                 <td colSpan={6} className="p-3 text-slate-600">Total — {totalNights} nights</td>
                 <td className="p-3 text-right text-slate-700 tabular-nums">{formatCurrency(totalPayout)}</td>
                 <td className="p-3 text-right text-amber-600 tabular-nums">{formatCurrency(totalCommission)}</td>
-                <td className="p-3 text-right text-emerald-600 tabular-nums">{formatCurrency(totalNet)}</td>
+                <td className="p-3 text-right text-emerald-600 tabular-nums">{formatCurrency(totalGross)}</td>
                 <td />
               </tr>
               <tr className="border-t border-slate-200 text-xs">
-                <td colSpan={6} className="px-3 py-2 text-slate-400">Net breakdown by payment status</td>
+                <td colSpan={6} className="px-3 py-2 text-slate-400">Gross breakdown by payment status</td>
                 <td colSpan={2} className="px-3 py-2 text-right">
                   <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
                     <CheckCircle2 size={11} /> Paid: {formatCurrency(totalPaid)}
@@ -445,11 +532,167 @@ export default function Reservations() {
         </table>
       </div>
 
-      {/* Add / Edit Modal */}
-      {showModal && (
+      {/* ── Expenses Section ── */}
+      <div className="flex items-center justify-between pt-2">
+        <div>
+          <h2 className="text-lg font-bold text-slate-800">Expenses</h2>
+          <p className="text-slate-500 text-sm">
+            {filteredExp.length} entries · {formatCurrency(grandTotal)} total
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => fetchExpenses(true)}
+            disabled={expRefreshing}
+            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 shadow-sm disabled:opacity-50"
+            title="Refresh expenses"
+          >
+            <RefreshCw size={15} className={expRefreshing ? 'animate-spin' : ''} />
+          </button>
+          <button
+            onClick={openAddExp}
+            className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 shadow-sm"
+          >
+            <Plus size={15} /> <span className="hidden sm:inline">Add Expense</span><span className="sm:hidden">Add</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Expense category filter */}
+      <div className="bg-white rounded-xl p-3 shadow-sm border border-slate-100">
+        <select
+          value={expCatFilter}
+          onChange={e => setExpCatFilter(e.target.value)}
+          className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
+        >
+          <option value="">All Categories</option>
+          {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+
+      {/* Expenses table + sidebar */}
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+        <div className="xl:col-span-3 bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50 text-slate-500 text-xs uppercase">
+                <th className="text-left p-3">Category</th>
+                <th className="text-left p-3">Period</th>
+                <th className="text-right p-3">Amount</th>
+                <th className="text-left p-3">Notes</th>
+                <th className="p-3 w-16"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {expLoading ? (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-slate-400">Loading…</td>
+                </tr>
+              ) : filteredExp.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-slate-400">No expenses found.</td>
+                </tr>
+              ) : filteredExp.map(e => (
+                <tr key={e.id} className="border-t border-slate-50 hover:bg-slate-50">
+                  <td className="p-3 font-medium text-slate-700">{e.category}</td>
+                  <td className="p-3 text-slate-500 text-xs">{MONTHS[e.month - 1]} {e.year}</td>
+                  <td className="p-3 text-right font-medium text-red-600 tabular-nums">
+                    {formatCurrency(e.amount)}
+                  </td>
+                  <td className="p-3 text-slate-400 text-xs">{e.notes || '—'}</td>
+                  <td className="p-3">
+                    <div className="flex items-center gap-1.5 justify-end">
+                      <button onClick={() => openEditExp(e)} className="p-1 text-slate-400 hover:text-indigo-600 rounded">
+                        <Pencil size={13} />
+                      </button>
+                      <button onClick={() => handleExpDelete(e.id)} className="p-1 text-slate-400 hover:text-red-600 rounded">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            {filteredExp.length > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-slate-200 bg-slate-50">
+                  <td colSpan={2} className="p-3 font-semibold text-slate-600">Total</td>
+                  <td className="p-3 text-right font-bold text-red-600 tabular-nums">
+                    {formatCurrency(grandTotal)}
+                  </td>
+                  <td colSpan={2} />
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+
+        {/* Category sidebar */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 h-fit">
+          <h3 className="font-semibold text-slate-700 text-sm mb-3">By Category</h3>
+          {categorySummary.length === 0 ? (
+            <p className="text-slate-400 text-xs text-center py-6">No data</p>
+          ) : (
+            <div className="space-y-2">
+              {categorySummary.map(({ category, total }) => {
+                const pct = grandTotal > 0 ? (total / grandTotal) * 100 : 0
+                const idx = EXPENSE_CATEGORIES.indexOf(category)
+                return (
+                  <div key={category}>
+                    <div className="flex items-center justify-between text-xs mb-0.5">
+                      <span className="text-slate-600 truncate mr-2">{category}</span>
+                      <span className="font-medium shrink-0" style={{ color: CAT_COLORS[idx % CAT_COLORS.length] }}>
+                        {formatCurrency(total)}
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-100 rounded-full h-1">
+                      <div
+                        className="h-1 rounded-full"
+                        style={{ width: `${pct}%`, background: CAT_COLORS[idx % CAT_COLORS.length] }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+              <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between text-xs">
+                <span className="font-bold text-slate-700">Total</span>
+                <span className="font-bold text-red-600">{formatCurrency(grandTotal)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Net Revenue ── */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4">
+        <h3 className="font-semibold text-slate-700 text-sm mb-3">Net Revenue</h3>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-0">
+          <div className="flex-1 text-center py-3">
+            <p className="text-xs text-slate-400 mb-0.5">Gross Revenue</p>
+            <p className="text-lg font-bold text-emerald-600">{formatCurrency(totalGross)}</p>
+          </div>
+          <div className="hidden sm:block text-slate-300 text-xl font-light">−</div>
+          <div className="block sm:hidden text-center text-slate-300 text-sm">minus</div>
+          <div className="flex-1 text-center py-3">
+            <p className="text-xs text-slate-400 mb-0.5">Total Expenses</p>
+            <p className="text-lg font-bold text-red-600">{formatCurrency(grandTotal)}</p>
+          </div>
+          <div className="hidden sm:block text-slate-300 text-xl font-light">=</div>
+          <div className="block sm:hidden text-center text-slate-300 text-sm">equals</div>
+          <div className={`flex-1 text-center py-3 rounded-lg ${totalNetRevenue >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
+            <p className="text-xs text-slate-400 mb-0.5">Net Revenue</p>
+            <p className={`text-xl font-bold ${totalNetRevenue >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+              {formatCurrency(totalNetRevenue)}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Reservation Modal */}
+      {showResModal && (
         <Modal
           title={editing ? 'Edit Reservation' : 'Add Reservation'}
-          onClose={() => setShowModal(false)}
+          onClose={() => setShowResModal(false)}
         >
           <form onSubmit={handleSave} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -457,7 +700,7 @@ export default function Reservations() {
                 <select
                   value={form.source}
                   onChange={e => setForm(f => ({ ...f, source: e.target.value }))}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  className={inputCls}
                   required
                 >
                   {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
@@ -519,7 +762,7 @@ export default function Reservations() {
 
             {(form.total_payout || form.commission || form.discount) && (
               <div className="bg-emerald-50 rounded-lg px-3 py-2 text-sm flex justify-between">
-                <span className="text-emerald-700 font-medium">Net Revenue Preview</span>
+                <span className="text-emerald-700 font-medium">Gross Revenue Preview</span>
                 <span className="text-emerald-700 font-bold">
                   {formatCurrency((+form.total_payout || 0) - (+form.commission || 0) - (+form.discount || 0))}
                 </span>
@@ -531,11 +774,92 @@ export default function Reservations() {
             )}
 
             <div className="flex gap-3 pt-1">
-              <button type="button" onClick={() => setShowModal(false)} className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm font-medium hover:bg-slate-50">
+              <button type="button" onClick={() => setShowResModal(false)} className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm font-medium hover:bg-slate-50">
                 Cancel
               </button>
               <button type="submit" disabled={saving} className="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
                 {saving ? 'Saving…' : editing ? 'Update' : 'Add Reservation'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Expense Modal */}
+      {showExpModal && (
+        <Modal
+          title={expEditing ? 'Edit Expense' : 'Add Expense'}
+          onClose={() => setShowExpModal(false)}
+          size="sm"
+        >
+          <form onSubmit={handleExpSave} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Category</label>
+              {selCls({
+                value: expForm.category,
+                onChange: e => setExpForm(f => ({ ...f, category: e.target.value })),
+                required: true,
+                children: EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>),
+              })}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Month</label>
+                {selCls({
+                  value: expForm.month,
+                  onChange: e => setExpForm(f => ({ ...f, month: e.target.value })),
+                  required: true,
+                  children: MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>),
+                })}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Year</label>
+                {selCls({
+                  value: expForm.year,
+                  onChange: e => setExpForm(f => ({ ...f, year: e.target.value })),
+                  children: YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>),
+                })}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Amount (€)</label>
+              <input
+                type="number" step="0.01" min="0"
+                value={expForm.amount}
+                onChange={e => setExpForm(f => ({ ...f, amount: e.target.value }))}
+                className={inputCls}
+                required
+                placeholder="0.00"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Notes</label>
+              <input
+                type="text"
+                value={expForm.notes}
+                onChange={e => setExpForm(f => ({ ...f, notes: e.target.value }))}
+                className={inputCls}
+                placeholder="Optional"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowExpModal(false)}
+                className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm font-medium hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={expSaving}
+                className="flex-1 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+              >
+                {expSaving ? 'Saving…' : expEditing ? 'Update' : 'Add Expense'}
               </button>
             </div>
           </form>
