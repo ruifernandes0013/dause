@@ -1,14 +1,10 @@
 import { useState, useEffect } from 'react'
 import {
-  TrendingUp, TrendingDown, DollarSign, Calendar,
-  Users, Percent, ArrowUpRight, ArrowDownRight, RefreshCw,
-  BedDouble, Star,
-} from 'lucide-react'
-import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, LineChart, Line,
   PieChart, Pie, Cell,
 } from 'recharts'
+import { RefreshCw } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import {
   formatCurrency, MONTHS, EXPENSE_CATEGORIES,
@@ -40,7 +36,7 @@ export default function Reports() {
     manual ? setRefreshing(false) : setLoading(false)
   }
 
-  // ── KPIs ──────────────────────────────────────────────────────────────────
+  // ── Core metrics ──────────────────────────────────────────────────────────
   const totalRevenue = reservations.reduce((s, r) => s + +r.total_payout, 0)
   const totalCommissions = reservations.reduce((s, r) => s + +(r.commission || 0), 0)
   const totalDiscounts = reservations.reduce((s, r) => s + +(r.discount || 0), 0)
@@ -49,101 +45,91 @@ export default function Reports() {
   const netIncome = grossIncome - totalExpenses
   const totalNights = reservations.reduce((s, r) => s + nightsBetween(r.check_in, r.check_out), 0)
   const daysInYear = (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 366 : 365
-  const occupancy = Math.round((totalNights / daysInYear) * 100)
+  const occupancy = totalNights / daysInYear
   const adr = totalNights > 0 ? grossIncome / totalNights : 0
   const revPar = grossIncome / daysInYear
   const avgStay = reservations.length > 0 ? totalNights / reservations.length : 0
   const avgBookingValue = reservations.length > 0 ? totalRevenue / reservations.length : 0
+  const netMargin = grossIncome > 0 ? (netIncome / grossIncome) * 100 : 0
+  const commissionRate = totalRevenue > 0 ? (totalCommissions / totalRevenue) * 100 : 0
+  const expenseRatio = grossIncome > 0 ? (totalExpenses / grossIncome) * 100 : 0
 
-  const kpis = [
-    { label: 'Total Bookings Value', value: formatCurrency(totalRevenue), sub: `${reservations.length} reservations`, icon: DollarSign, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-    { label: 'Gross Income', value: formatCurrency(grossIncome), sub: 'After commissions & discounts', icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Total Expenses', value: formatCurrency(totalExpenses), sub: 'Operational costs', icon: TrendingDown, color: 'text-red-500', bg: 'bg-red-50' },
-    { label: 'Net Income', value: formatCurrency(netIncome), sub: 'After all deductions', icon: netIncome >= 0 ? ArrowUpRight : ArrowDownRight, color: netIncome >= 0 ? 'text-emerald-600' : 'text-red-600', bg: netIncome >= 0 ? 'bg-emerald-50' : 'bg-red-50' },
-    { label: 'Nights Booked', value: totalNights, sub: `${occupancy}% occupancy rate`, icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Platform Commissions', value: formatCurrency(totalCommissions), sub: 'Paid to platforms', icon: Percent, color: 'text-amber-600', bg: 'bg-amber-50' },
-    { label: 'ADR', value: formatCurrency(adr), sub: 'Avg daily rate (gross/night)', icon: Star, color: 'text-purple-600', bg: 'bg-purple-50' },
-    { label: 'RevPAR', value: formatCurrency(revPar), sub: 'Revenue per available night', icon: BedDouble, color: 'text-sky-600', bg: 'bg-sky-50' },
-    { label: 'Avg Length of Stay', value: `${avgStay.toFixed(1)} nights`, sub: `Avg booking: ${formatCurrency(avgBookingValue)}`, icon: Users, color: 'text-teal-600', bg: 'bg-teal-50' },
-  ]
+  // ── Source performance ────────────────────────────────────────────────────
+  const sourcePerf = ['Airbnb', 'Booking', 'Direct'].map(src => {
+    const sRes = reservations.filter(r => r.source === src)
+    const nights = sRes.reduce((s, r) => s + nightsBetween(r.check_in, r.check_out), 0)
+    const revenue = sRes.reduce((s, r) => s + +r.total_payout, 0)
+    const commission = sRes.reduce((s, r) => s + +(r.commission || 0), 0)
+    const discount = sRes.reduce((s, r) => s + +(r.discount || 0), 0)
+    const gross = revenue - commission - discount
+    const srcAdr = nights > 0 ? gross / nights : 0
+    const share = totalRevenue > 0 ? (revenue / totalRevenue) * 100 : 0
+    return { src, bookings: sRes.length, nights, revenue, commission, gross, adr: srcAdr, share }
+  }).filter(s => s.bookings > 0)
 
   // ── Source pie ────────────────────────────────────────────────────────────
-  const sourceData = ['Airbnb', 'Booking', 'Direct']
-    .map(src => ({
-      name: src,
-      value: +reservations.filter(r => r.source === src).reduce((s, r) => s + +r.total_payout, 0).toFixed(2),
-      count: reservations.filter(r => r.source === src).length,
-    }))
-    .filter(s => s.value > 0)
+  const sourceData = sourcePerf.map(s => ({ name: s.src, value: +s.revenue.toFixed(2) }))
 
-  // ── Per-month data ────────────────────────────────────────────────────────
+  // ── Monthly chart data ────────────────────────────────────────────────────
   const monthly = MONTHS.map((name, i) => {
     const m = i + 1
     const mRes = reservations.filter(r => new Date(r.check_in).getMonth() + 1 === m)
     const mExp = expenses.filter(e => +e.month === m)
-
-    const totalReservation = mRes.reduce((s, r) => s + +r.total_payout, 0)
     const commission = mRes.reduce((s, r) => s + +(r.commission || 0), 0)
-    const discounts = mRes.reduce((s, r) => s + +(r.discount || 0), 0)
-    const mGross = totalReservation - commission - discounts
+    const mGross = mRes.reduce((s, r) => s + +r.total_payout - +(r.commission || 0) - +(r.discount || 0), 0)
     const mExpTotal = mExp.reduce((s, e) => s + +e.amount, 0)
     const nights = mRes.reduce((s, r) => s + nightsBetween(r.check_in, r.check_out), 0)
     const monthAdr = nights > 0 ? +(mGross / nights).toFixed(2) : 0
-
-    const byCategory = {}
-    EXPENSE_CATEGORIES.forEach(cat => {
-      byCategory[cat] = mExp.filter(e => norm(e.category) === norm(cat)).reduce((s, e) => s + +e.amount, 0)
-    })
-
     return {
-      name, short: name.slice(0, 3), m,
-      totalReservation, commission, discounts,
-      grossIncome: mGross, totalExpenses: mExpTotal, netIncome: mGross - mExpTotal,
-      nights, bookings: mRes.length, adr: monthAdr,
       month: name.slice(0, 3),
       'Gross Income': +mGross.toFixed(2),
       'Expenses': +mExpTotal.toFixed(2),
       'Net Income': +(mGross - mExpTotal).toFixed(2),
       Nights: nights,
       ADR: monthAdr,
-      ...byCategory,
+      Commission: +commission.toFixed(2),
     }
   })
 
-  // ── Year totals ───────────────────────────────────────────────────────────
-  const totals = {
-    totalReservation: monthly.reduce((s, m) => s + m.totalReservation, 0),
-    commission: monthly.reduce((s, m) => s + m.commission, 0),
-    discounts: monthly.reduce((s, m) => s + m.discounts, 0),
-    grossIncome: monthly.reduce((s, m) => s + m.grossIncome, 0),
-    totalExpenses: monthly.reduce((s, m) => s + m.totalExpenses, 0),
-    netIncome: monthly.reduce((s, m) => s + m.netIncome, 0),
-    nights: monthly.reduce((s, m) => s + m.nights, 0),
-    bookings: monthly.reduce((s, m) => s + m.bookings, 0),
-  }
-  EXPENSE_CATEGORIES.forEach(cat => {
-    totals[cat] = expenses.filter(e => norm(e.category) === norm(cat)).reduce((s, e) => s + +e.amount, 0)
-  })
+  // ── Expense totals by category ────────────────────────────────────────────
+  const expByCategory = EXPENSE_CATEGORIES
+    .map(cat => ({
+      name: cat,
+      value: +expenses.filter(e => norm(e.category) === norm(cat)).reduce((s, e) => s + +e.amount, 0).toFixed(2),
+    }))
+    .filter(c => c.value > 0)
 
-  const fmt = (v) => v === 0 ? '—' : formatCurrency(v)
-  const fmtNet = (v) => v === 0 ? '—' : (
-    <span className={v >= 0 ? 'text-emerald-600' : 'text-red-600'}>{formatCurrency(v)}</span>
-  )
+  // ── Best / worst month ────────────────────────────────────────────────────
+  const monthlyNet = monthly.map((m, i) => ({ ...m, idx: i }))
+  const bestMonth = [...monthlyNet].sort((a, b) => b['Net Income'] - a['Net Income'])[0]
+  const worstMonth = [...monthlyNet].filter(m => m['Gross Income'] > 0).sort((a, b) => a['Net Income'] - b['Net Income'])[0]
+
+  const pct = (v) => `${v.toFixed(1)}%`
+
+  const kpis = [
+    { label: 'ADR', value: formatCurrency(adr), sub: 'Gross income per booked night', color: 'text-purple-600', bg: 'bg-purple-50' },
+    { label: 'RevPAR', value: formatCurrency(revPar), sub: 'Revenue per available night', color: 'text-sky-600', bg: 'bg-sky-50' },
+    { label: 'Occupancy Rate', value: pct(occupancy * 100), sub: `${totalNights} nights of ${daysInYear}`, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'Avg Length of Stay', value: `${avgStay.toFixed(1)} nights`, sub: `${reservations.length} bookings total`, color: 'text-teal-600', bg: 'bg-teal-50' },
+    { label: 'Avg Booking Value', value: formatCurrency(avgBookingValue), sub: 'Per reservation (payout)', color: 'text-indigo-600', bg: 'bg-indigo-50' },
+    { label: 'Net Margin', value: pct(netMargin), sub: 'Net / Gross income', color: netMargin >= 0 ? 'text-emerald-600' : 'text-red-600', bg: netMargin >= 0 ? 'bg-emerald-50' : 'bg-red-50' },
+    { label: 'Commission Rate', value: pct(commissionRate), sub: 'Commissions / Total payout', color: 'text-amber-600', bg: 'bg-amber-50' },
+    { label: 'Expense Ratio', value: pct(expenseRatio), sub: 'Expenses / Gross income', color: 'text-red-500', bg: 'bg-red-50' },
+  ]
 
   return (
     <div className="p-6 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Annual Report</h1>
-          <p className="text-slate-500 text-sm">Full year breakdown</p>
+          <h1 className="text-xl font-bold text-slate-800">Reports</h1>
+          <p className="text-slate-500 text-sm">Performance analysis {year}</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => fetchData(true)}
             disabled={refreshing}
             className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 shadow-sm disabled:opacity-50"
-            title="Refresh data"
           >
             <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
           </button>
@@ -161,28 +147,41 @@ export default function Reports() {
         <div className="flex items-center justify-center h-64 text-slate-400">Loading…</div>
       ) : (
         <>
-          {/* Full KPI cards */}
-          <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
-            {kpis.map(({ label, value, sub, icon: Icon, color, bg }) => (
+          {/* Analytical KPI cards */}
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+            {kpis.map(({ label, value, sub, color, bg }) => (
               <div key={label} className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs text-slate-500">{label}</p>
-                    <p className={`text-xl font-bold mt-0.5 ${color}`}>{value}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">{sub}</p>
-                  </div>
-                  <div className={`${bg} ${color} p-2 rounded-lg`}>
-                    <Icon size={18} />
-                  </div>
-                </div>
+                <p className="text-xs text-slate-500">{label}</p>
+                <p className={`text-xl font-bold mt-1 ${color}`}>{value}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{sub}</p>
               </div>
             ))}
           </div>
 
-          {/* Charts row 1: Monthly Revenue vs Expenses + Source pie */}
+          {/* Best / Worst month highlight */}
+          {(bestMonth || worstMonth) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {bestMonth && bestMonth['Net Income'] > 0 && (
+                <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
+                  <p className="text-xs text-emerald-600 font-medium uppercase tracking-wide">Best Month</p>
+                  <p className="text-lg font-bold text-emerald-700 mt-1">{bestMonth.month}</p>
+                  <p className="text-sm text-emerald-600">Net: {formatCurrency(bestMonth['Net Income'])} · Gross: {formatCurrency(bestMonth['Gross Income'])}</p>
+                </div>
+              )}
+              {worstMonth && (
+                <div className="bg-red-50 border border-red-100 rounded-xl p-4">
+                  <p className="text-xs text-red-500 font-medium uppercase tracking-wide">Worst Month (active)</p>
+                  <p className="text-lg font-bold text-red-600 mt-1">{worstMonth.month}</p>
+                  <p className="text-sm text-red-500">Net: {formatCurrency(worstMonth['Net Income'])} · Gross: {formatCurrency(worstMonth['Gross Income'])}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Charts row 1: Revenue vs Expenses + Source pie */}
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
             <div className="xl:col-span-2 bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-              <h3 className="font-semibold text-slate-700 text-sm mb-3">Monthly Revenue vs Expenses {year}</h3>
+              <h3 className="font-semibold text-slate-700 text-sm mb-3">Monthly Revenue vs Expenses</h3>
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={monthly} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -215,15 +214,15 @@ export default function Reports() {
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="mt-2 space-y-1.5">
-                    {sourceData.map(s => (
-                      <div key={s.name} className="flex items-center justify-between text-xs">
+                    {sourcePerf.map(s => (
+                      <div key={s.src} className="flex items-center justify-between text-xs">
                         <div className="flex items-center gap-1.5">
-                          <div className="w-2.5 h-2.5 rounded-full" style={{ background: SOURCE_COLORS[s.name] }} />
-                          <span className="text-slate-600">{s.name}</span>
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ background: SOURCE_COLORS[s.src] }} />
+                          <span className="text-slate-600">{s.src}</span>
                         </div>
                         <div className="text-right">
-                          <span className="text-slate-700 font-medium">{formatCurrency(s.value)}</span>
-                          <span className="text-slate-400 ml-1">({s.count})</span>
+                          <span className="text-slate-700 font-medium">{formatCurrency(s.revenue)}</span>
+                          <span className="text-slate-400 ml-1">({s.bookings})</span>
                         </div>
                       </div>
                     ))}
@@ -262,95 +261,67 @@ export default function Reports() {
             </div>
           </div>
 
-          {/* Monthly Breakdown table */}
-          <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
-            <div className="px-4 py-3 border-b border-slate-100">
-              <h3 className="font-semibold text-slate-700 text-sm">Monthly Breakdown {year}</h3>
+          {/* Source performance table */}
+          {sourcePerf.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
+              <div className="px-4 py-3 border-b border-slate-100">
+                <h3 className="font-semibold text-slate-700 text-sm">Source Performance</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Which channel generates the most value per night</p>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-500 text-xs uppercase">
+                    <th className="text-left p-3">Source</th>
+                    <th className="text-center p-3">Bookings</th>
+                    <th className="text-center p-3">Nights</th>
+                    <th className="text-right p-3">Gross Payout</th>
+                    <th className="text-right p-3">Commission</th>
+                    <th className="text-right p-3">Net Gross</th>
+                    <th className="text-right p-3">ADR</th>
+                    <th className="text-right p-3">Share</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sourcePerf.map(s => (
+                    <tr key={s.src} className="border-t border-slate-50 hover:bg-slate-50">
+                      <td className="p-3">
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${SOURCE_BADGE[s.src] || 'bg-slate-100 text-slate-600'}`}>
+                          {s.src}
+                        </span>
+                      </td>
+                      <td className="p-3 text-center text-slate-600">{s.bookings}</td>
+                      <td className="p-3 text-center text-slate-600">{s.nights}</td>
+                      <td className="p-3 text-right text-slate-700 tabular-nums">{formatCurrency(s.revenue)}</td>
+                      <td className="p-3 text-right text-amber-600 tabular-nums">{s.commission > 0 ? formatCurrency(s.commission) : '—'}</td>
+                      <td className="p-3 text-right font-medium text-emerald-600 tabular-nums">{formatCurrency(s.gross)}</td>
+                      <td className="p-3 text-right font-semibold text-purple-600 tabular-nums">{formatCurrency(s.adr)}</td>
+                      <td className="p-3 text-right text-slate-500 tabular-nums">{s.share.toFixed(1)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-sm">
+                    <td className="p-3 text-slate-600">Total</td>
+                    <td className="p-3 text-center text-slate-600">{reservations.length}</td>
+                    <td className="p-3 text-center text-slate-600">{totalNights}</td>
+                    <td className="p-3 text-right text-slate-700 tabular-nums">{formatCurrency(totalRevenue)}</td>
+                    <td className="p-3 text-right text-amber-600 tabular-nums">{formatCurrency(totalCommissions)}</td>
+                    <td className="p-3 text-right text-emerald-600 tabular-nums">{formatCurrency(grossIncome)}</td>
+                    <td className="p-3 text-right text-purple-600 tabular-nums">{formatCurrency(adr)}</td>
+                    <td className="p-3 text-right text-slate-500">100%</td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
-            <table className="w-full text-xs min-w-[1100px]">
-              <thead>
-                <tr className="bg-slate-50 text-slate-500 uppercase text-[11px]">
-                  <th className="text-left p-3 sticky left-0 bg-slate-50 min-w-[160px]">Category</th>
-                  {MONTHS.map(m => (
-                    <th key={m} className="text-right px-2 py-3 min-w-[72px]">{m.slice(0, 3)}</th>
-                  ))}
-                  <th className="text-right px-3 py-3 min-w-[80px] font-bold">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td colSpan={14} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 font-semibold text-[10px] uppercase tracking-widest">Revenue</td>
-                </tr>
-                {[
-                  { key: 'totalReservation', label: 'Total Reserva', cls: 'text-slate-700' },
-                  { key: 'commission', label: 'Comissão Plataforma', cls: 'text-amber-600' },
-                  { key: 'discounts', label: 'Descontos', cls: 'text-orange-500' },
-                  { key: 'grossIncome', label: 'Rendimento Bruto', cls: 'text-indigo-600 font-bold' },
-                ].map(({ key, label, cls }) => (
-                  <tr key={key} className="border-t border-slate-50 hover:bg-slate-50">
-                    <td className={`p-3 sticky left-0 bg-white text-slate-600 ${key === 'grossIncome' ? 'font-semibold' : ''}`}>{label}</td>
-                    {monthly.map(m => (
-                      <td key={m.m} className={`px-2 py-3 text-right tabular-nums ${cls}`}>{fmt(m[key])}</td>
-                    ))}
-                    <td className={`px-3 py-3 text-right font-bold tabular-nums ${cls}`}>{fmt(totals[key])}</td>
-                  </tr>
-                ))}
+          )}
 
-                <tr>
-                  <td colSpan={14} className="px-3 py-1.5 bg-red-50 text-red-700 font-semibold text-[10px] uppercase tracking-widest">Despesas</td>
-                </tr>
-                {EXPENSE_CATEGORIES.map(cat => (
-                  <tr key={cat} className="border-t border-slate-50 hover:bg-slate-50">
-                    <td className="p-3 sticky left-0 bg-white text-slate-600">{cat}</td>
-                    {monthly.map(m => (
-                      <td key={m.m} className="px-2 py-3 text-right text-red-500 tabular-nums">{fmt(m[cat] || 0)}</td>
-                    ))}
-                    <td className="px-3 py-3 text-right font-bold text-red-600 tabular-nums">{fmt(totals[cat])}</td>
-                  </tr>
-                ))}
-                <tr className="border-t border-slate-200 bg-red-50">
-                  <td className="p-3 sticky left-0 bg-red-50 font-bold text-red-700">Total Despesas</td>
-                  {monthly.map(m => (
-                    <td key={m.m} className="px-2 py-3 text-right font-bold text-red-700 tabular-nums">{fmt(m.totalExpenses)}</td>
-                  ))}
-                  <td className="px-3 py-3 text-right font-bold text-red-700 tabular-nums">{fmt(totals.totalExpenses)}</td>
-                </tr>
-
-                <tr className="border-t-2 border-slate-300 bg-emerald-50">
-                  <td className="p-3 sticky left-0 bg-emerald-50 font-bold text-emerald-700">Rendimento Líquido</td>
-                  {monthly.map(m => (
-                    <td key={m.m} className="px-2 py-3 text-right font-bold tabular-nums">
-                      {m.netIncome === 0 ? '—' : fmtNet(m.netIncome)}
-                    </td>
-                  ))}
-                  <td className="px-3 py-3 text-right font-bold tabular-nums">{fmtNet(totals.netIncome)}</td>
-                </tr>
-
-                <tr className="border-t border-slate-100">
-                  <td className="p-3 sticky left-0 bg-white text-slate-500">Noites</td>
-                  {monthly.map(m => (
-                    <td key={m.m} className="px-2 py-3 text-right text-slate-500">{m.nights || '—'}</td>
-                  ))}
-                  <td className="px-3 py-3 text-right font-medium text-slate-600">{totals.nights}</td>
-                </tr>
-                <tr className="border-t border-slate-50">
-                  <td className="p-3 sticky left-0 bg-white text-slate-500">Reservas</td>
-                  {monthly.map(m => (
-                    <td key={m.m} className="px-2 py-3 text-right text-slate-500">{m.bookings || '—'}</td>
-                  ))}
-                  <td className="px-3 py-3 text-right font-medium text-slate-600">{totals.bookings}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          {/* Expense breakdown horizontal bar chart */}
-          {EXPENSE_CATEGORIES.some(cat => totals[cat] > 0) && (
+          {/* Expense breakdown */}
+          {expByCategory.length > 0 && (
             <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
               <h3 className="font-semibold text-slate-700 text-sm mb-3">Expense Breakdown by Category</h3>
-              <ResponsiveContainer width="100%" height={220}>
+              <ResponsiveContainer width="100%" height={Math.max(160, expByCategory.length * 36)}>
                 <BarChart
-                  data={EXPENSE_CATEGORIES.filter(cat => totals[cat] > 0).map(cat => ({ name: cat, value: +totals[cat].toFixed(2) }))}
+                  data={expByCategory}
                   layout="vertical"
                   margin={{ top: 0, right: 20, left: 140, bottom: 0 }}
                 >
