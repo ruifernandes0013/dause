@@ -89,7 +89,7 @@ export default function Dashboard() {
   )
 
   const kpis = [
-    { label: 'Total Bookings Value', value: formatCurrency(totalRevenue), icon: DollarSign, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+    { label: 'Total Bookings Value', value: formatCurrency(totalRevenue), sub: `${reservations.length} bookings`, icon: DollarSign, color: 'text-indigo-600', bg: 'bg-indigo-50' },
     { label: 'Gross Income', value: formatCurrency(grossIncome), icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50' },
     { label: 'Total Expenses', value: formatCurrency(totalExpenses), icon: TrendingDown, color: 'text-red-500', bg: 'bg-red-50' },
     {
@@ -132,12 +132,13 @@ export default function Dashboard() {
         <>
           {/* 4 KPI cards */}
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-            {kpis.map(({ label, value, icon: Icon, color, bg }) => (
+            {kpis.map(({ label, value, sub, icon: Icon, color, bg }) => (
               <div key={label} className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-xs text-slate-500">{label}</p>
                     <p className={`text-xl font-bold mt-1 ${color}`}>{value}</p>
+                    {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
                   </div>
                   <div className={`${bg} ${color} p-2 rounded-lg`}>
                     <Icon size={18} />

@@ -14,7 +14,7 @@ const SOURCE_COLOR = {
   Booking: '#3b82f6',
   Direct:  '#8b5cf6',
 }
-const DEFAULT_COLOR = '#94a3b8'
+const DEFAULT_COLOR = '#10b981'
 
 export default function CalendarView() {
   const today = new Date()
@@ -42,7 +42,6 @@ export default function CalendarView() {
     if (month === 0) { setMonth(11); setYear(y => y - 1) }
     else setMonth(m => m - 1)
   }
-
   function nextMonth() {
     if (month === 11) { setMonth(0); setYear(y => y + 1) }
     else setMonth(m => m + 1)
@@ -55,8 +54,6 @@ export default function CalendarView() {
     ...Array(startDow).fill(null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ]
-
-  // Split cells into week rows
   const weeks = []
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7))
 
@@ -64,12 +61,7 @@ export default function CalendarView() {
     return `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
   }
 
-  function getOccupied(day) {
-    const dateStr = toDateStr(day)
-    return reservations.find(r => r.check_in <= dateStr && r.check_out > dateStr) || null
-  }
-
-  // For each week, compute booking bar segments (startCol → endCol per booking)
+  // For a given week row, return all booking bar segments
   function getWeekBars(week) {
     const result = []
     reservations.forEach(r => {
@@ -80,9 +72,21 @@ export default function CalendarView() {
         const dateStr = toDateStr(day)
         if (r.check_in <= dateStr && r.check_out > dateStr) cols.push(col)
       }
-      if (cols.length > 0) {
-        result.push({ booking: r, startCol: cols[0], endCol: cols[cols.length - 1] })
-      }
+      if (cols.length === 0) return
+
+      const startCol = cols[0]
+      const endCol = cols[cols.length - 1]
+
+      // isStart: booking check_in is within this week
+      const isStart = r.check_in === toDateStr(week[startCol])
+
+      // isEnd: booking ends on or before the day after the last occupied day
+      const endDay = week[endCol]
+      const nextD = new Date(year, month, endDay + 1)
+      const nextDStr = `${nextD.getFullYear()}-${String(nextD.getMonth() + 1).padStart(2, '0')}-${String(nextD.getDate()).padStart(2, '0')}`
+      const isEnd = r.check_out <= nextDStr
+
+      result.push({ booking: r, startCol, endCol, isStart, isEnd })
     })
     return result
   }
@@ -95,16 +99,13 @@ export default function CalendarView() {
   reservations.forEach(r => {
     const ci = new Date(r.check_in + 'T12:00:00')
     const co = new Date(r.check_out + 'T12:00:00')
-    if (ci.getFullYear() === year && ci.getMonth() === month && [0, 6].includes(ci.getDay())) {
+    if (ci.getFullYear() === year && ci.getMonth() === month && [0, 6].includes(ci.getDay()))
       weekendEvents.push({ type: 'check-in', date: r.check_in, dow: ci.getDay(), booking: r })
-    }
-    if (co.getFullYear() === year && co.getMonth() === month && [0, 6].includes(co.getDay())) {
+    if (co.getFullYear() === year && co.getMonth() === month && [0, 6].includes(co.getDay()))
       weekendEvents.push({ type: 'check-out', date: r.check_out, dow: co.getDay(), booking: r })
-    }
   })
   weekendEvents.sort((a, b) => a.date.localeCompare(b.date))
 
-  // Group weekend events by date
   const weekendByDate = {}
   weekendEvents.forEach(ev => {
     if (!weekendByDate[ev.date]) weekendByDate[ev.date] = []
@@ -124,26 +125,20 @@ export default function CalendarView() {
           <p className="text-slate-500 text-sm">Occupancy overview</p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => fetchData(true)}
-            disabled={refreshing}
-            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 shadow-sm disabled:opacity-50"
-          >
+          <button onClick={() => fetchData(true)} disabled={refreshing}
+            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 shadow-sm disabled:opacity-50">
             <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
           </button>
-          <select
-            value={year}
-            onChange={e => setYear(+e.target.value)}
-            className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm"
-          >
+          <select value={year} onChange={e => setYear(+e.target.value)}
+            className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white shadow-sm">
             {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         {/* Month navigation */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
           <button onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors">
             <ChevronLeft size={18} />
           </button>
@@ -154,13 +149,16 @@ export default function CalendarView() {
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center h-48 text-slate-400 text-sm">Loading…</div>
+          <div className="flex items-center justify-center h-64 text-slate-400 text-sm">Loading…</div>
         ) : (
-          <div className="p-3">
+          <div>
             {/* Day-of-week headers */}
-            <div className="grid grid-cols-7 mb-2">
-              {DAYS.map(d => (
-                <div key={d} className="text-center text-xs font-medium text-slate-400 py-1">
+            <div className="grid grid-cols-7 border-b border-slate-200">
+              {DAYS.map((d, i) => (
+                <div key={d} className={`
+                  text-center py-2 text-xs font-semibold border-r last:border-r-0 border-slate-100
+                  ${i === 0 || i === 6 ? 'text-slate-400 bg-slate-50' : 'text-slate-500'}
+                `}>
                   <span className="hidden sm:inline">{d}</span>
                   <span className="sm:hidden">{d[0]}</span>
                 </div>
@@ -168,91 +166,112 @@ export default function CalendarView() {
             </div>
 
             {/* Week rows */}
-            <div className="space-y-1">
-              {weeks.map((week, wi) => {
-                const weekBars = getWeekBars(week)
-                return (
-                  <div key={wi}>
-                    {/* Day cells */}
-                    <div className="grid grid-cols-7 gap-0.5">
-                      {week.map((day, col) => {
-                        if (!day) return <div key={`e${col}`} className="h-10 sm:h-12" />
-                        const occupied = getOccupied(day)
-                        const dow = new Date(year, month, day).getDay()
-                        const isCheckIn = occupied?.check_in === toDateStr(day)
-                        const showLabel = occupied && (isCheckIn || dow === 0)
-                        const label = occupied ? (occupied.guest_name || occupied.source) : null
-                        return (
-                          <div
-                            key={day}
-                            title={occupied
-                              ? `${occupied.source}${occupied.guest_name ? ' · ' + occupied.guest_name : ''} · IN: ${occupied.check_in} · OUT: ${occupied.check_out}`
-                              : 'Free'
-                            }
-                            className={`
-                              relative h-10 sm:h-12 rounded-lg flex flex-col items-start justify-start
-                              pt-1 px-1.5 select-none
-                              ${occupied ? 'bg-white border border-slate-100' : 'bg-emerald-50 border border-emerald-100'}
-                              ${isToday(day) ? 'ring-2 ring-indigo-500 ring-inset' : ''}
-                            `}
-                          >
-                            <span className={`text-[11px] sm:text-xs font-bold leading-none ${
-                              occupied ? 'text-slate-700' : 'text-emerald-700'
+            {weeks.map((week, wi) => {
+              const weekBars = getWeekBars(week)
+              const hasBar = weekBars.length > 0
+              const rowHeight = hasBar ? 76 : 52
+
+              return (
+                <div
+                  key={wi}
+                  className="relative border-b border-slate-100 last:border-b-0"
+                  style={{ minHeight: `${rowHeight}px` }}
+                >
+                  {/* Day cells */}
+                  <div className="grid grid-cols-7" style={{ minHeight: `${rowHeight}px` }}>
+                    {week.map((day, col) => {
+                      const weekend = col === 0 || col === 6
+                      return (
+                        <div
+                          key={day || `e${col}`}
+                          className={`
+                            border-r last:border-r-0 border-slate-100
+                            pt-1.5 pl-2
+                            ${!day ? (weekend ? 'bg-slate-50/60' : 'bg-white') : ''}
+                            ${day && weekend ? 'bg-slate-50/40' : ''}
+                            ${day && !weekend ? 'bg-white' : ''}
+                            ${day && isToday(day) ? '!bg-indigo-50' : ''}
+                          `}
+                          style={{ minHeight: `${rowHeight}px` }}
+                        >
+                          {day && (
+                            <span className={`text-xs font-semibold leading-none ${
+                              isToday(day)
+                                ? 'text-indigo-600'
+                                : weekend ? 'text-slate-400' : 'text-slate-600'
                             }`}>
                               {day}
                             </span>
-                            {showLabel && label && (
-                              <span className="hidden sm:block text-[8px] leading-tight mt-0.5 text-slate-400 truncate w-full">
-                                {label}
-                              </span>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-
-                    {/* Booking bar — one row per week, flex-1 segments aligned to grid columns */}
-                    {weekBars.length > 0 && (
-                      <div className="flex gap-0.5 mt-0.5 h-1.5">
-                        {[0, 1, 2, 3, 4, 5, 6].map(col => {
-                          const bar = weekBars.find(b => col >= b.startCol && col <= b.endCol)
-                          if (!bar) return <div key={col} className="flex-1" />
-                          const color = SOURCE_COLOR[bar.booking.source] || DEFAULT_COLOR
-                          const isLeft = col === bar.startCol
-                          const isRight = col === bar.endCol
-                          const br = `${isLeft ? '9999px' : '0'} ${isRight ? '9999px' : '0'} ${isRight ? '9999px' : '0'} ${isLeft ? '9999px' : '0'}`
-                          return (
-                            <div
-                              key={col}
-                              className="flex-1"
-                              style={{ background: color, borderRadius: br }}
-                            />
-                          )
-                        })}
-                      </div>
-                    )}
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
-                )
-              })}
-            </div>
+
+                  {/* Booking bars — absolutely positioned */}
+                  {weekBars.map(({ booking, startCol, endCol, isStart, isEnd }) => {
+                    const color = SOURCE_COLOR[booking.source] || DEFAULT_COLOR
+                    const label = booking.guest_name || booking.source
+                    const colW = 100 / 7
+                    const INSET = 3
+
+                    const leftInset = isStart ? INSET : 0
+                    const rightInset = isEnd ? INSET : 0
+
+                    const borderRadius = [
+                      isStart ? '5px' : '0',
+                      isEnd   ? '5px' : '0',
+                      isEnd   ? '5px' : '0',
+                      isStart ? '5px' : '0',
+                    ].join(' ')
+
+                    return (
+                      <div
+                        key={booking.id}
+                        className="absolute flex items-center overflow-hidden select-none"
+                        title={`${booking.source}${booking.guest_name ? ' · ' + booking.guest_name : ''} · ${booking.check_in} → ${booking.check_out} · ${nightsBetween(booking.check_in, booking.check_out)} nights`}
+                        style={{
+                          left: `calc(${startCol * colW}% + ${leftInset}px)`,
+                          width: `calc(${(endCol - startCol + 1) * colW}% - ${leftInset + rightInset}px)`,
+                          top: '28px',
+                          height: '28px',
+                          background: color,
+                          borderRadius,
+                          paddingLeft: '8px',
+                          paddingRight: '6px',
+                        }}
+                      >
+                        <span style={{
+                          color: 'white',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          lineHeight: 1,
+                        }}>
+                          {label}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
 
       {/* Legend */}
       <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded bg-emerald-50 border border-emerald-200" />
-          Bookable
-        </div>
         {Object.entries(SOURCE_COLOR).map(([src, color]) => (
           <div key={src} className="flex items-center gap-1.5">
-            <div className="w-8 h-1.5 rounded-full" style={{ background: color }} />
+            <div className="w-6 h-3 rounded" style={{ background: color }} />
             {src}
           </div>
         ))}
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded ring-2 ring-indigo-500" />
+          <div className="w-3 h-3 rounded bg-indigo-100 border border-indigo-300" />
           Today
         </div>
       </div>
@@ -277,9 +296,8 @@ export default function CalendarView() {
             {Object.entries(weekendByDate).map(([date, events]) => {
               const isOpen = expandedDates[date]
               const dow = new Date(date + 'T12:00:00').getDay()
-              const dayLabel = dow === 6 ? 'Sat' : 'Sun'
               const formatted = new Date(date + 'T12:00:00').toLocaleDateString('pt-PT', {
-                day: '2-digit', month: 'short', year: 'numeric',
+                weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
               })
               return (
                 <div key={date}>
@@ -291,32 +309,29 @@ export default function CalendarView() {
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ${
                         dow === 6 ? 'bg-amber-100 text-amber-700' : 'bg-orange-100 text-orange-700'
                       }`}>
-                        {dayLabel}
+                        {dow === 6 ? 'Sat' : 'Sun'}
                       </span>
                       <span className="font-medium text-slate-700 text-sm">{formatted}</span>
                       <span className="text-xs text-slate-400">
                         {events.map(e => e.type === 'check-in' ? 'Check-in' : 'Check-out').join(' · ')}
                       </span>
                     </div>
-                    <ChevronDown
-                      size={14}
-                      className={`text-slate-400 transition-transform shrink-0 ${isOpen ? 'rotate-180' : ''}`}
-                    />
+                    <ChevronDown size={14} className={`text-slate-400 transition-transform shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
                   </button>
 
                   {isOpen && (
-                    <div className="px-4 pb-3 space-y-2 bg-slate-50">
+                    <div className="bg-slate-50 border-t border-slate-100 divide-y divide-slate-100">
                       {events.map((ev, i) => {
                         const r = ev.booking
                         const isIn = ev.type === 'check-in'
                         return (
-                          <div key={i} className="flex flex-wrap items-center gap-3 py-2 border-t border-slate-100 first:border-t-0">
-                            <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                          <div key={i} className="px-4 py-3 flex flex-wrap items-center gap-3">
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded shrink-0 ${
                               isIn ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-600'
                             }`}>
                               {isIn ? 'Check-in' : 'Check-out'}
                             </span>
-                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${SOURCE_BADGE[r.source] || 'bg-slate-100 text-slate-600'}`}>
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium shrink-0 ${SOURCE_BADGE[r.source] || 'bg-slate-100 text-slate-600'}`}>
                               {r.source}
                             </span>
                             {r.guest_name && (
