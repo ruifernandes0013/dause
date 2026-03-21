@@ -387,6 +387,30 @@ export default function Reservations() {
         ))}
       </div>
 
+      {/* Net Revenue card */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-0">
+          <div className="flex-1 text-center py-2">
+            <p className="text-xs text-slate-400 mb-0.5">Gross Revenue</p>
+            <p className="text-lg font-bold text-emerald-600">{formatCurrency(totalGross)}</p>
+          </div>
+          <div className="hidden sm:block text-slate-300 text-xl font-light">−</div>
+          <div className="block sm:hidden text-center text-slate-300 text-sm">minus</div>
+          <div className="flex-1 text-center py-2">
+            <p className="text-xs text-slate-400 mb-0.5">Total Expenses</p>
+            <p className="text-lg font-bold text-red-600">{formatCurrency(grandTotal)}</p>
+          </div>
+          <div className="hidden sm:block text-slate-300 text-xl font-light">=</div>
+          <div className="block sm:hidden text-center text-slate-300 text-sm">equals</div>
+          <div className={`flex-1 text-center py-2 rounded-lg ${totalNetRevenue >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
+            <p className="text-xs text-slate-400 mb-0.5">Net Revenue</p>
+            <p className={`text-xl font-bold ${totalNetRevenue >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+              {formatCurrency(totalNetRevenue)}
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Legend */}
       <div className="flex items-center gap-4 text-xs text-slate-500">
         <div className="flex items-center gap-1.5">
@@ -660,31 +684,6 @@ export default function Reservations() {
               </div>
             </div>
           )}
-        </div>
-      </div>
-
-      {/* ── Net Revenue ── */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4">
-        <h3 className="font-semibold text-slate-700 text-sm mb-3">Net Revenue</h3>
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-0">
-          <div className="flex-1 text-center py-3">
-            <p className="text-xs text-slate-400 mb-0.5">Gross Revenue</p>
-            <p className="text-lg font-bold text-emerald-600">{formatCurrency(totalGross)}</p>
-          </div>
-          <div className="hidden sm:block text-slate-300 text-xl font-light">−</div>
-          <div className="block sm:hidden text-center text-slate-300 text-sm">minus</div>
-          <div className="flex-1 text-center py-3">
-            <p className="text-xs text-slate-400 mb-0.5">Total Expenses</p>
-            <p className="text-lg font-bold text-red-600">{formatCurrency(grandTotal)}</p>
-          </div>
-          <div className="hidden sm:block text-slate-300 text-xl font-light">=</div>
-          <div className="block sm:hidden text-center text-slate-300 text-sm">equals</div>
-          <div className={`flex-1 text-center py-3 rounded-lg ${totalNetRevenue >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
-            <p className="text-xs text-slate-400 mb-0.5">Net Revenue</p>
-            <p className={`text-xl font-bold ${totalNetRevenue >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-              {formatCurrency(totalNetRevenue)}
-            </p>
-          </div>
         </div>
       </div>
 
