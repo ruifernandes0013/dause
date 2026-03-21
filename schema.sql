@@ -29,19 +29,6 @@ CREATE TABLE IF NOT EXISTS expenses (
   updated_at  TIMESTAMPTZ   DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS goals (
-  id           UUID          DEFAULT gen_random_uuid() PRIMARY KEY,
-  type         VARCHAR(20)   NOT NULL CHECK (type IN ('todo', 'goal')),
-  title        VARCHAR(200)  NOT NULL,
-  description  TEXT,
-  status       VARCHAR(20)   DEFAULT 'active' CHECK (status IN ('active', 'done')),
-  priority     VARCHAR(10)   DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
-  target_value DECIMAL(10,2),
-  category     VARCHAR(100),
-  created_at   TIMESTAMPTZ   DEFAULT NOW(),
-  updated_at   TIMESTAMPTZ   DEFAULT NOW()
-);
-
 -- Optional: disable RLS for internal single-user app
 -- ALTER TABLE reservations DISABLE ROW LEVEL SECURITY;
 -- ALTER TABLE expenses DISABLE ROW LEVEL SECURITY;
