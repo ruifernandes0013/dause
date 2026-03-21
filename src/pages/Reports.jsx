@@ -104,6 +104,28 @@ export default function Reports() {
   const bestMonth = [...monthlyNet].sort((a, b) => b['Net Income'] - a['Net Income'])[0]
   const worstMonth = [...monthlyNet].filter(m => m['Gross Income'] > 0).sort((a, b) => a['Net Income'] - b['Net Income'])[0]
 
+  // ── Projections ───────────────────────────────────────────────────────────
+  const currentMonth = new Date().getFullYear() === year ? new Date().getMonth() + 1 : 12
+  const monthsWithData = monthly.filter(m => m['Gross Income'] > 0).length
+  const projectionMonths = monthsWithData > 0 ? monthsWithData : 1
+  const avgMonthlyGross = grossIncome / projectionMonths
+  const avgMonthlyNet = netIncome / projectionMonths
+  const avgMonthlyExpenses = totalExpenses / projectionMonths
+  const avgMonthlyRevenue = totalRevenue / projectionMonths
+  const avgMonthlyCommissions = totalCommissions / projectionMonths
+  const avgMonthlyNights = totalNights / projectionMonths
+
+  const remainingMonths = 12 - currentMonth
+  const projectedGross = grossIncome + avgMonthlyGross * remainingMonths
+  const projectedNet = netIncome + avgMonthlyNet * remainingMonths
+  const projectedRevenue = totalRevenue + avgMonthlyRevenue * remainingMonths
+  const projectedCommissions = totalCommissions + avgMonthlyCommissions * remainingMonths
+  const projectedExpenses = totalExpenses + avgMonthlyExpenses * remainingMonths
+  const projectedNights = totalNights + avgMonthlyNights * remainingMonths
+  const projectedOccupancy = projectedNights / daysInYear
+
+  const hasProjections = new Date().getFullYear() === year && monthsWithData > 0 && remainingMonths > 0
+
   const pct = (v) => `${v.toFixed(1)}%`
 
   const kpis = [
@@ -157,6 +179,58 @@ export default function Reports() {
               </div>
             ))}
           </div>
+
+          {/* Financial Summary */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100">
+              <h3 className="font-semibold text-slate-700 text-sm">Financial Summary {year}</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Full revenue & cost breakdown for the year</p>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 divide-x divide-y sm:divide-y-0 divide-slate-100">
+              {[
+                { label: 'Total Payout', value: formatCurrency(totalRevenue), color: 'text-slate-700', note: `${reservations.length} bookings` },
+                { label: 'Commissions', value: formatCurrency(totalCommissions), color: 'text-amber-600', note: `${commissionRate.toFixed(1)}% of payout` },
+                { label: 'Discounts', value: formatCurrency(totalDiscounts), color: 'text-orange-500', note: 'Applied deductions' },
+                { label: 'Gross Income', value: formatCurrency(grossIncome), color: 'text-indigo-600', note: 'Payout − comm − disc' },
+                { label: 'Expenses', value: formatCurrency(totalExpenses), color: 'text-red-500', note: `${expenseRatio.toFixed(1)}% of gross` },
+                { label: 'Net Income', value: formatCurrency(netIncome), color: netIncome >= 0 ? 'text-emerald-600' : 'text-red-600', note: `${netMargin.toFixed(1)}% margin` },
+              ].map(({ label, value, color, note }) => (
+                <div key={label} className="px-4 py-4">
+                  <p className="text-xs text-slate-400">{label}</p>
+                  <p className={`text-lg font-bold mt-0.5 tabular-nums ${color}`}>{value}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{note}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Year-End Projections */}
+          {hasProjections && (
+            <div className="bg-gradient-to-r from-indigo-50 to-sky-50 rounded-xl border border-indigo-100 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-indigo-100">
+                <h3 className="font-semibold text-slate-700 text-sm">Year-End Projection ({year})</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Based on {monthsWithData} months of data · avg {formatCurrency(avgMonthlyGross)}/mo gross · {remainingMonths} months remaining
+                </p>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 divide-x divide-y sm:divide-y-0 divide-indigo-100">
+                {[
+                  { label: 'Projected Payout', value: formatCurrency(projectedRevenue), color: 'text-slate-700', note: `+${formatCurrency(avgMonthlyRevenue)}/mo` },
+                  { label: 'Projected Commissions', value: formatCurrency(projectedCommissions), color: 'text-amber-600', note: `+${formatCurrency(avgMonthlyCommissions)}/mo` },
+                  { label: 'Projected Gross', value: formatCurrency(projectedGross), color: 'text-indigo-600', note: `+${formatCurrency(avgMonthlyGross)}/mo` },
+                  { label: 'Projected Expenses', value: formatCurrency(projectedExpenses), color: 'text-red-500', note: `+${formatCurrency(avgMonthlyExpenses)}/mo` },
+                  { label: 'Projected Net', value: formatCurrency(projectedNet), color: projectedNet >= 0 ? 'text-emerald-600' : 'text-red-600', note: `+${formatCurrency(avgMonthlyNet)}/mo` },
+                  { label: 'Proj. Occupancy', value: pct(projectedOccupancy * 100), color: 'text-blue-600', note: `${Math.round(projectedNights)} nights / ${daysInYear}` },
+                ].map(({ label, value, color, note }) => (
+                  <div key={label} className="px-4 py-4">
+                    <p className="text-xs text-slate-500">{label}</p>
+                    <p className={`text-lg font-bold mt-0.5 tabular-nums ${color}`}>{value}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{note}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Best / Worst month highlight */}
           {(bestMonth || worstMonth) && (
