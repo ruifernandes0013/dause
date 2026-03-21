@@ -7,7 +7,6 @@ CREATE TABLE IF NOT EXISTS reservations (
   id              UUID          DEFAULT gen_random_uuid() PRIMARY KEY,
   source          VARCHAR(50)   NOT NULL,          -- 'Airbnb' | 'Booking' | 'Direct'
   reservation_id  VARCHAR(100),                    -- platform booking ID
-  guest_name      VARCHAR(200),                    -- guest full name
   check_in        DATE          NOT NULL,
   check_out       DATE          NOT NULL,
   guests          INTEGER       DEFAULT 1,
@@ -30,6 +29,19 @@ CREATE TABLE IF NOT EXISTS expenses (
   updated_at  TIMESTAMPTZ   DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS goals (
+  id           UUID          DEFAULT gen_random_uuid() PRIMARY KEY,
+  type         VARCHAR(20)   NOT NULL CHECK (type IN ('todo', 'goal')),
+  title        VARCHAR(200)  NOT NULL,
+  description  TEXT,
+  status       VARCHAR(20)   DEFAULT 'active' CHECK (status IN ('active', 'done')),
+  priority     VARCHAR(10)   DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
+  target_value DECIMAL(10,2),
+  category     VARCHAR(100),
+  created_at   TIMESTAMPTZ   DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ   DEFAULT NOW()
+);
+
 -- Optional: disable RLS for internal single-user app
 -- ALTER TABLE reservations DISABLE ROW LEVEL SECURITY;
 -- ALTER TABLE expenses DISABLE ROW LEVEL SECURITY;
@@ -39,9 +51,3 @@ CREATE TABLE IF NOT EXISTS expenses (
 -- CREATE POLICY "allow all" ON reservations FOR ALL USING (true) WITH CHECK (true);
 -- ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
 -- CREATE POLICY "allow all" ON expenses FOR ALL USING (true) WITH CHECK (true);
-
--- Migration: add guest_name column (run if table already exists)
-ALTER TABLE reservations ADD COLUMN IF NOT EXISTS guest_name VARCHAR(200);
-
--- Migration: add paid column
-ALTER TABLE reservations ADD COLUMN IF NOT EXISTS paid BOOLEAN DEFAULT FALSE;

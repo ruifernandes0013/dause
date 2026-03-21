@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import {
   LayoutDashboard, CalendarDays, BarChart3, Home,
-  Menu, X, Calendar, ChevronLeft, ChevronRight, LogOut,
+  Menu, X, Calendar, ChevronLeft, ChevronRight, LogOut, Target,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
@@ -11,6 +11,7 @@ const navItems = [
   { to: '/calendar', icon: CalendarDays, label: 'Calendar' },
   { to: '/reservations', icon: Calendar, label: 'Reservations' },
   { to: '/reports', icon: BarChart3, label: 'Reports' },
+  { to: '/goals', icon: Target, label: 'Goals' },
 ]
 
 export default function Layout() {

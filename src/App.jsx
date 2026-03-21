@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard'
 import CalendarView from './pages/CalendarView'
 import Reservations from './pages/Reservations'
 import Reports from './pages/Reports'
+import Goals from './pages/Goals'
 
 function AppRoutes() {
   const { authed } = useAuth()
@@ -19,6 +20,7 @@ function AppRoutes() {
         <Route path="calendar" element={<CalendarView />} />
         <Route path="reservations" element={<Reservations />} />
         <Route path="reports" element={<Reports />} />
+        <Route path="goals" element={<Goals />} />
       </Route>
     </Routes>
   )
