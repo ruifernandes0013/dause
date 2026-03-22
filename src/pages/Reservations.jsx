@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Pencil, Trash2, Search, X, RefreshCw, CheckCircle2, Clock } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, X, RefreshCw, CheckCircle2, Clock, ExternalLink } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import Modal from '../components/Modal'
 import {
@@ -33,6 +33,17 @@ const CAT_COLORS = [
   '#8b5cf6','#ec4899','#14b8a6','#f97316','#84cc16',
   '#06b6d4','#a855f7','#64748b',
 ]
+
+function getBookingLink(source, reservationId) {
+  if (!reservationId) return null
+  if (source === 'Airbnb')
+    return `https://www.airbnb.pt/multicalendar/1544429398201323521/reservation/${reservationId}`
+  if (source === 'Booking')
+    return `https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/booking.html?res_id=${reservationId}&hotel_id=15732899`
+  if (source === 'Direct')
+    return `https://app.ynnov.pt/reservations/${reservationId}/edit`
+  return null
+}
 
 const todayStr = new Date().toISOString().split('T')[0]
 
@@ -516,6 +527,17 @@ export default function Reservations() {
                   </td>
                   <td className="p-3">
                     <div className="flex items-center gap-1.5 justify-end">
+                      {getBookingLink(r.source, r.reservation_id) && (
+                        <a
+                          href={getBookingLink(r.source, r.reservation_id)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1 text-slate-400 hover:text-blue-600 rounded"
+                          title={`Open in ${r.source}`}
+                        >
+                          <ExternalLink size={13} />
+                        </a>
+                      )}
                       <button onClick={() => openEdit(r)} className="p-1 text-slate-400 hover:text-indigo-600 rounded">
                         <Pencil size={13} />
                       </button>

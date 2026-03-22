@@ -1,7 +1,18 @@
 import { useState, useEffect } from 'react'
-import { ChevronLeft, ChevronRight, ChevronDown, RefreshCw } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, RefreshCw, X, ExternalLink } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { YEAR_OPTIONS, SOURCE_BADGE, formatCurrency, nightsBetween } from '../utils/formatters'
+
+function getBookingLink(source, reservationId) {
+  if (!reservationId) return null
+  if (source === 'Airbnb')
+    return `https://www.airbnb.pt/multicalendar/1544429398201323521/reservation/${reservationId}`
+  if (source === 'Booking')
+    return `https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/booking.html?res_id=${reservationId}&hotel_id=15732899`
+  if (source === 'Direct')
+    return `https://app.ynnov.pt/reservations/${reservationId}/edit`
+  return null
+}
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTH_NAMES = [
@@ -24,6 +35,7 @@ export default function CalendarView() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [expandedDates, setExpandedDates] = useState({})
+  const [selectedBooking, setSelectedBooking] = useState(null)
 
   useEffect(() => { fetchData() }, [year])
 
@@ -228,8 +240,9 @@ export default function CalendarView() {
                     return (
                       <div
                         key={booking.id}
-                        className="absolute flex items-center overflow-hidden select-none"
+                        className="absolute flex items-center overflow-hidden cursor-pointer"
                         title={`${booking.source}${booking.guest_name ? ' · ' + booking.guest_name : ''} · ${booking.check_in} → ${booking.check_out} · ${nightsBetween(booking.check_in, booking.check_out)} nights`}
+                        onClick={() => setSelectedBooking(booking)}
                         style={{
                           left: `calc(${startCol * colW}% + ${leftInset}px)`,
                           width: `calc(${(endCol - startCol + 1) * colW}% - ${leftInset + rightInset}px)`,
@@ -275,6 +288,103 @@ export default function CalendarView() {
           Today
         </div>
       </div>
+
+      {/* Booking detail modal */}
+      {selectedBooking && (() => {
+        const r = selectedBooking
+        const nights = nightsBetween(r.check_in, r.check_out)
+        const gross = +r.total_payout - +(r.commission || 0) - +(r.discount || 0)
+        const link = getBookingLink(r.source, r.reservation_id)
+        const color = SOURCE_COLOR[r.source] || DEFAULT_COLOR
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.4)' }}
+            onClick={() => setSelectedBooking(null)}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header strip */}
+              <div className="flex items-center justify-between px-5 py-4" style={{ background: color }}>
+                <div className="flex items-center gap-2">
+                  <span className="text-white font-bold text-base">{r.guest_name || r.source}</span>
+                  {r.guest_name && (
+                    <span className="text-white/70 text-xs font-medium">{r.source}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {link && (
+                    <a
+                      href={link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-white/80 hover:text-white transition-colors"
+                      title={`Open in ${r.source}`}
+                    >
+                      <ExternalLink size={16} />
+                    </a>
+                  )}
+                  <button onClick={() => setSelectedBooking(null)} className="text-white/80 hover:text-white transition-colors">
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Details */}
+              <div className="px-5 py-4 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs text-slate-400 mb-0.5">Check-in</p>
+                    <p className="text-sm font-semibold text-slate-700">
+                      {new Date(r.check_in + 'T12:00:00').toLocaleDateString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 mb-0.5">Check-out</p>
+                    <p className="text-sm font-semibold text-slate-700">
+                      {new Date(r.check_out + 'T12:00:00').toLocaleDateString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 mb-0.5">Nights</p>
+                    <p className="text-sm font-semibold text-slate-700">{nights}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 mb-0.5">Guests</p>
+                    <p className="text-sm font-semibold text-slate-700">{r.guests || 1}</p>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-100 pt-3 grid grid-cols-3 gap-3">
+                  <div>
+                    <p className="text-xs text-slate-400 mb-0.5">Payout</p>
+                    <p className="text-sm font-bold text-slate-700 tabular-nums">{formatCurrency(r.total_payout)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 mb-0.5">Commission</p>
+                    <p className="text-sm font-bold text-amber-600 tabular-nums">
+                      {r.commission > 0 ? formatCurrency(r.commission) : '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 mb-0.5">Net</p>
+                    <p className="text-sm font-bold text-emerald-600 tabular-nums">{formatCurrency(gross)}</p>
+                  </div>
+                </div>
+
+                {r.reservation_id && (
+                  <div className="border-t border-slate-100 pt-3">
+                    <p className="text-xs text-slate-400 mb-0.5">Booking ID</p>
+                    <p className="text-xs font-mono text-slate-500">{r.reservation_id}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Weekend cleaning schedule — collapsed by date */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
@@ -344,6 +454,17 @@ export default function CalendarView() {
                             <span className="ml-auto text-sm font-semibold text-slate-700 tabular-nums">
                               {formatCurrency(r.total_payout)}
                             </span>
+                            {getBookingLink(r.source, r.reservation_id) && (
+                              <a
+                                href={getBookingLink(r.source, r.reservation_id)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-slate-400 hover:text-blue-600 transition-colors shrink-0"
+                                title={`Open in ${r.source}`}
+                              >
+                                <ExternalLink size={14} />
+                              </a>
+                            )}
                           </div>
                         )
                       })}
