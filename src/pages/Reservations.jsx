@@ -212,7 +212,13 @@ export default function Reservations() {
   }
 
   const filteredExp = expenses.filter(e => {
-    if (filters.month && +e.month !== +filters.month) return false
+    if (filters.dateFrom || filters.dateTo) {
+      const fromMonth = filters.dateFrom ? new Date(filters.dateFrom + 'T00:00:00').getMonth() + 1 : 1
+      const toMonth = filters.dateTo ? new Date(filters.dateTo + 'T00:00:00').getMonth() + 1 : 12
+      if (+e.month < fromMonth || +e.month > toMonth) return false
+    } else if (filters.month) {
+      if (+e.month !== +filters.month) return false
+    }
     if (expCatFilter && norm(e.category) !== norm(expCatFilter)) return false
     return true
   })
@@ -319,7 +325,7 @@ export default function Reservations() {
           </select>
           <select
             value={filters.month}
-            onChange={e => setFilters(f => ({ ...f, month: e.target.value }))}
+            onChange={e => setFilters(f => ({ ...f, month: e.target.value, dateFrom: '', dateTo: '' }))}
             className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
           >
             <option value="">All Months</option>
@@ -360,14 +366,14 @@ export default function Reservations() {
             <input
               type="date"
               value={filters.dateFrom}
-              onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value }))}
+              onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value, month: e.target.value ? '' : f.month }))}
               className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm"
             />
             <span className="text-slate-400 text-xs">to</span>
             <input
               type="date"
               value={filters.dateTo}
-              onChange={e => setFilters(f => ({ ...f, dateTo: e.target.value }))}
+              onChange={e => setFilters(f => ({ ...f, dateTo: e.target.value, month: e.target.value ? '' : f.month }))}
               className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm"
             />
           </div>
