@@ -188,7 +188,32 @@ export default function Reservations() {
   const totalCommission = filtered.reduce((s, r) => s + +(r.commission || 0), 0)
   const totalDiscount = filtered.reduce((s, r) => s + +(r.discount || 0), 0)
   const totalGross = totalPayout - totalCommission - totalDiscount
-  const totalNights = filtered.reduce((s, r) => s + nightsBetween(r.check_in, r.check_out), 0)
+  // Determine the period window for night-overlap counting
+  let periodStart, periodEnd
+  if (filters.dateFrom || filters.dateTo) {
+    periodStart = filters.dateFrom ? new Date(filters.dateFrom + 'T00:00:00') : new Date(filters.year, 0, 1)
+    if (filters.dateTo) {
+      const d = new Date(filters.dateTo + 'T00:00:00')
+      d.setDate(d.getDate() + 1)
+      periodEnd = d
+    } else {
+      periodEnd = new Date(+filters.year + 1, 0, 1)
+    }
+  } else if (filters.month) {
+    periodStart = new Date(filters.year, +filters.month - 1, 1)
+    periodEnd = new Date(filters.year, +filters.month, 1)
+  } else {
+    periodStart = new Date(filters.year, 0, 1)
+    periodEnd = new Date(+filters.year + 1, 0, 1)
+  }
+  const nightsOverlap = r => {
+    const s = Math.max(new Date(r.check_in + 'T00:00:00'), periodStart)
+    const e = Math.min(new Date(r.check_out + 'T00:00:00'), periodEnd)
+    return Math.max(0, Math.round((e - s) / 864e5))
+  }
+  const totalNights = reservations
+    .filter(r => !filters.source || r.source === filters.source)
+    .reduce((s, r) => s + nightsOverlap(r), 0)
   const unpaidCount = filtered.filter(r => !r.paid).length
   const totalPaid = filtered
     .filter(r => r.paid)
