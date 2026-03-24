@@ -4,7 +4,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import {
-  formatCurrency, MONTHS, nightsBetween, YEAR_OPTIONS, EXPENSE_CATEGORIES,
+  formatCurrency, MONTHS, YEAR_OPTIONS, EXPENSE_CATEGORIES,
 } from '../utils/formatters'
 
 const norm = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
@@ -53,7 +53,13 @@ export default function Dashboard() {
     const discounts = mRes.reduce((s, r) => s + +(r.discount || 0), 0)
     const mGross = totalReservation - commission - discounts
     const mExpTotal = mExp.reduce((s, e) => s + +e.amount, 0)
-    const nights = mRes.reduce((s, r) => s + nightsBetween(r.check_in, r.check_out), 0)
+    const mStart = new Date(year, m - 1, 1)
+    const mEnd = new Date(year, m, 1)
+    const nights = reservations.reduce((s, r) => {
+      const start = Math.max(new Date(r.check_in + 'T00:00:00'), mStart)
+      const end = Math.min(new Date(r.check_out + 'T00:00:00'), mEnd)
+      return s + Math.max(0, Math.round((end - start) / 864e5))
+    }, 0)
 
     const byCategory = {}
     EXPENSE_CATEGORIES.forEach(cat => {
