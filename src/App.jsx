@@ -7,9 +7,10 @@ import CalendarView from './pages/CalendarView'
 import Reservations from './pages/Reservations'
 import Reports from './pages/Reports'
 function AppRoutes() {
-  const { authed } = useAuth()
+  const { session } = useAuth()
 
-  if (!authed) return <Login />
+  if (session === undefined) return null // loading
+  if (!session) return <Login />
 
   return (
     <Routes>

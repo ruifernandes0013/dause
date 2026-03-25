@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
   const { login } = useAuth()
-  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
@@ -14,9 +14,8 @@ export default function Login() {
     e.preventDefault()
     setError('')
     setLoading(true)
-    await new Promise(r => setTimeout(r, 300)) // brief delay for UX
-    const ok = login(username, password)
-    if (!ok) setError('Invalid username or password.')
+    const err = await login(email, password)
+    if (err) setError(err)
     setLoading(false)
   }
 
@@ -36,14 +35,14 @@ export default function Login() {
         <div className="bg-white rounded-2xl shadow-xl p-6 space-y-4">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Username</label>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Email</label>
               <input
-                type="text"
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                placeholder="rui.fernandes"
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="you@example.com"
                 required
-                autoComplete="username"
+                autoComplete="email"
                 className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
               />
             </div>

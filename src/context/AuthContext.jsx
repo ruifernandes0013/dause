@@ -1,29 +1,31 @@
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
+import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext(null)
 
-const VALID_USERNAME = 'rui.fernandes'
-const VALID_PASSWORD = 'Dause@2026!'
-
 export function AuthProvider({ children }) {
-  const [authed, setAuthed] = useState(() => localStorage.getItem('rental_authed') === 'true')
+  const [session, setSession] = useState(undefined) // undefined = loading
 
-  function login(username, password) {
-    if (username === VALID_USERNAME && password === VALID_PASSWORD) {
-      localStorage.setItem('rental_authed', 'true')
-      setAuthed(true)
-      return true
-    }
-    return false
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  async function login(email, password) {
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) return error.message
+    return null
   }
 
-  function logout() {
-    localStorage.removeItem('rental_authed')
-    setAuthed(false)
+  async function logout() {
+    await supabase.auth.signOut()
   }
 
   return (
-    <AuthContext.Provider value={{ authed, login, logout }}>
+    <AuthContext.Provider value={{ session, login, logout }}>
       {children}
     </AuthContext.Provider>
   )
