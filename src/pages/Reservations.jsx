@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Pencil, Trash2, Search, X, RefreshCw, CheckCircle2, Clock, ExternalLink } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, X, RefreshCw, CheckCircle2, Clock, ExternalLink, Download } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import Modal from '../components/Modal'
 import {
@@ -295,6 +295,54 @@ export default function Reservations() {
     fetchExpenses()
   }
 
+  // — Export helpers —
+  function exportCSV(rows, columns, filename) {
+    const header = columns.map(c => c.label).join(',')
+    const body = rows.map(row =>
+      columns.map(c => {
+        const v = c.value(row)
+        return typeof v === 'string' && v.includes(',') ? `"${v}"` : v ?? ''
+      }).join(',')
+    )
+    const blob = new Blob([[header, ...body].join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function exportReservations() {
+    const cols = [
+      { label: 'Source', value: r => r.source },
+      { label: 'Reservation ID', value: r => r.reservation_id || '' },
+      { label: 'Guest', value: r => r.guest_name || '' },
+      { label: 'Check-in', value: r => r.check_in },
+      { label: 'Check-out', value: r => r.check_out },
+      { label: 'Nights', value: r => nightsBetween(r.check_in, r.check_out) },
+      { label: 'Guests', value: r => r.guests },
+      { label: 'Total Payout', value: r => r.total_payout },
+      { label: 'Commission', value: r => r.commission || 0 },
+      { label: 'Discount', value: r => r.discount || 0 },
+      { label: 'Net', value: r => (+r.total_payout - +(r.commission || 0) - +(r.discount || 0)).toFixed(2) },
+      { label: 'Paid', value: r => r.paid ? 'Yes' : 'No' },
+      { label: 'Notes', value: r => r.notes || '' },
+    ]
+    exportCSV(filtered, cols, `reservations_${filters.year}${filters.month ? '_' + String(filters.month).padStart(2, '0') : ''}.csv`)
+  }
+
+  function exportExpenses() {
+    const cols = [
+      { label: 'Category', value: e => e.category },
+      { label: 'Month', value: e => e.month },
+      { label: 'Year', value: e => e.year },
+      { label: 'Amount', value: e => e.amount },
+      { label: 'Notes', value: e => e.notes || '' },
+    ]
+    exportCSV(filteredExp, cols, `expenses_${filters.year}${filters.month ? '_' + String(filters.month).padStart(2, '0') : ''}.csv`)
+  }
+
   // — Form helpers —
   const field = (label, children) => (
     <div>
@@ -328,6 +376,14 @@ export default function Reservations() {
             title="Refresh data"
           >
             <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+          <button
+            onClick={exportReservations}
+            disabled={filtered.length === 0}
+            className="flex items-center gap-1.5 border border-slate-200 bg-white text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 shadow-sm disabled:opacity-40"
+            title="Export to CSV"
+          >
+            <Download size={15} /> <span className="hidden sm:inline">Export</span>
           </button>
           <button
             onClick={openAdd}
@@ -625,6 +681,14 @@ export default function Reservations() {
             title="Refresh expenses"
           >
             <RefreshCw size={15} className={expRefreshing ? 'animate-spin' : ''} />
+          </button>
+          <button
+            onClick={exportExpenses}
+            disabled={filteredExp.length === 0}
+            className="flex items-center gap-1.5 border border-slate-200 bg-white text-slate-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 shadow-sm disabled:opacity-40"
+            title="Export to CSV"
+          >
+            <Download size={15} /> <span className="hidden sm:inline">Export</span>
           </button>
           <button
             onClick={openAddExp}
